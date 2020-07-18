@@ -1,6 +1,6 @@
 {
-  "name": "hazelcast-client",
-  "version": "3.12.3",
+  "name": "hazelcast-client-nodejs",
+  "version": "4.0.0",
   "description": "Hazelcast - open source In-Memory Data Grid - client for NodeJS",
   "main": "lib/index.js",
   "dependencies": {
