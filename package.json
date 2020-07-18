@@ -1,5 +1,5 @@
 {
-  "name": "@chiw/hazelcast-client-nodejs",
+  "name": "@chiw/hazelcast-client",
   "version": "4.0.3",
   "description": "Hazelcast - open source In-Memory Data Grid - client for NodeJS",
   "main": "lib/index.js",
