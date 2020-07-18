@@ -36,5 +36,5 @@ as described [here](DOCUMENTATION.md#121-setting-up-a-hazelcast-imdg-cluster).
 ### Client
 
 ```bash
-npm i hazelcast-client-nodejs
+npm i @chiw/hazelcast-client
 ```
