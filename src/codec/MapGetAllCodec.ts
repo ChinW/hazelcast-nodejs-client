@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-/*tslint:disable:max-line-length*/
+/* eslint-disable max-len */
 import {BitsUtil} from '../BitsUtil';
 import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
 import {StringCodec} from './builtin/StringCodec';
@@ -26,7 +26,7 @@ import {EntryListCodec} from './builtin/EntryListCodec';
 // hex: 0x012300
 const REQUEST_MESSAGE_TYPE = 74496;
 // hex: 0x012301
-const RESPONSE_MESSAGE_TYPE = 74497;
+// RESPONSE_MESSAGE_TYPE = 74497
 
 const REQUEST_INITIAL_FRAME_SIZE = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 

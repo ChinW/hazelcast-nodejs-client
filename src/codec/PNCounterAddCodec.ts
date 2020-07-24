@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-/*tslint:disable:max-line-length*/
+/* eslint-disable max-len */
 import {BitsUtil} from '../BitsUtil';
 import {FixSizedTypesCodec} from './builtin/FixSizedTypesCodec';
 import {ClientMessage, Frame, RESPONSE_BACKUP_ACKS_OFFSET, PARTITION_ID_OFFSET} from '../ClientMessage';
@@ -26,7 +26,7 @@ import {EntryListUUIDLongCodec} from './builtin/EntryListUUIDLongCodec';
 // hex: 0x1D0200
 const REQUEST_MESSAGE_TYPE = 1901056;
 // hex: 0x1D0201
-const RESPONSE_MESSAGE_TYPE = 1901057;
+// RESPONSE_MESSAGE_TYPE = 1901057
 
 const REQUEST_DELTA_OFFSET = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 const REQUEST_GET_BEFORE_UPDATE_OFFSET = REQUEST_DELTA_OFFSET + BitsUtil.LONG_SIZE_IN_BYTES;

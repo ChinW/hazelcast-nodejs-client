@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-/*tslint:disable:max-line-length*/
+/* eslint-disable max-len */
 import {BitsUtil} from '../BitsUtil';
 import {FixSizedTypesCodec} from './builtin/FixSizedTypesCodec';
 import {ClientMessage, Frame, RESPONSE_BACKUP_ACKS_OFFSET, PARTITION_ID_OFFSET} from '../ClientMessage';
@@ -24,7 +24,7 @@ import * as Long from 'long';
 // hex: 0x000F00
 const REQUEST_MESSAGE_TYPE = 3840;
 // hex: 0x000F01
-const RESPONSE_MESSAGE_TYPE = 3841;
+// RESPONSE_MESSAGE_TYPE = 3841
 // hex: 0x000F02
 const EVENT_BACKUP_MESSAGE_TYPE = 3842;
 

@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-/*tslint:disable:max-line-length*/
+/* eslint-disable max-len */
 import {BitsUtil} from '../BitsUtil';
 import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
 
 // hex: 0x000B00
 const REQUEST_MESSAGE_TYPE = 2816;
 // hex: 0x000B01
-const RESPONSE_MESSAGE_TYPE = 2817;
+// RESPONSE_MESSAGE_TYPE = 2817
 
 const REQUEST_INITIAL_FRAME_SIZE = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
