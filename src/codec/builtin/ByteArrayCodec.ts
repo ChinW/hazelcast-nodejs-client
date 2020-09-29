@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 
-import {ClientMessage, Frame} from '../../ClientMessage';
+import {ClientMessage, Frame} from '../../protocol/ClientMessage';
 
+/** @internal */
 export class ByteArrayCodec {
     static encode(clientMessage: ClientMessage, bytes: Buffer): void {
         clientMessage.addFrame(new Frame(bytes));

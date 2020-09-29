@@ -15,8 +15,8 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
-import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {BitsUtil} from '../util/BitsUtil';
+import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import {StringCodec} from './builtin/StringCodec';
 import {EntryListCodec} from './builtin/EntryListCodec';
 import {DataCodec} from './builtin/DataCodec';
@@ -29,6 +29,7 @@ const REQUEST_MESSAGE_TYPE = 854016;
 
 const REQUEST_INITIAL_FRAME_SIZE = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
+/** @internal */
 export class ReplicatedMapPutAllCodec {
     static encodeRequest(name: string, entries: Array<[Data, Data]>): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();

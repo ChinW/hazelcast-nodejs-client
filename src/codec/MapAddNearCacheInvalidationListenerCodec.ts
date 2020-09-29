@@ -15,9 +15,9 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
+import {BitsUtil} from '../util/BitsUtil';
 import {FixSizedTypesCodec} from './builtin/FixSizedTypesCodec';
-import {ClientMessage, Frame, RESPONSE_BACKUP_ACKS_OFFSET, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {ClientMessage, Frame, RESPONSE_BACKUP_ACKS_OFFSET, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import {StringCodec} from './builtin/StringCodec';
 import {UUID} from '../core/UUID';
 import * as Long from 'long';
@@ -45,10 +45,7 @@ const EVENT_I_MAP_INVALIDATION_SOURCE_UUID_OFFSET = PARTITION_ID_OFFSET + BitsUt
 const EVENT_I_MAP_INVALIDATION_PARTITION_UUID_OFFSET = EVENT_I_MAP_INVALIDATION_SOURCE_UUID_OFFSET + BitsUtil.UUID_SIZE_IN_BYTES;
 const EVENT_I_MAP_INVALIDATION_SEQUENCE_OFFSET = EVENT_I_MAP_INVALIDATION_PARTITION_UUID_OFFSET + BitsUtil.UUID_SIZE_IN_BYTES;
 
-export interface MapAddNearCacheInvalidationListenerResponseParams {
-    response: UUID;
-}
-
+/** @internal */
 export class MapAddNearCacheInvalidationListenerCodec {
     static encodeRequest(name: string, listenerFlags: number, localOnly: boolean): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -65,12 +62,10 @@ export class MapAddNearCacheInvalidationListenerCodec {
         return clientMessage;
     }
 
-    static decodeResponse(clientMessage: ClientMessage): MapAddNearCacheInvalidationListenerResponseParams {
+    static decodeResponse(clientMessage: ClientMessage): UUID {
         const initialFrame = clientMessage.nextFrame();
 
-        return {
-            response: FixSizedTypesCodec.decodeUUID(initialFrame.content, RESPONSE_RESPONSE_OFFSET),
-        };
+        return FixSizedTypesCodec.decodeUUID(initialFrame.content, RESPONSE_RESPONSE_OFFSET);
     }
 
     static handle(clientMessage: ClientMessage, handleIMapInvalidationEvent: (key: Data, sourceUuid: UUID, partitionUuid: UUID, sequence: Long) => void = null, handleIMapBatchInvalidationEvent: (keys: Data[], sourceUuids: UUID[], partitionUuids: UUID[], sequences: Long[]) => void = null): void {

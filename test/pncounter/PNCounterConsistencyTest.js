@@ -13,69 +13,52 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+'use strict';
 
-var chai = require('chai');
+const chai = require('chai');
 chai.use(require('chai-as-promised'));
-var expect = require('chai').expect;
-var RC = require('../RC');
-var Client = require('../../').Client;
-const Config = require('../../').Config;
-var Errors = require('../..').HazelcastErrors;
-var fs = require('fs');
-var path = require('path');
+const expect = require('chai').expect;
+const fs = require('fs');
+const path = require('path');
+
+const RC = require('../RC');
+const { Client, ConsistencyLostError } = require('../../');
 
 describe('PNCounterConsistencyTest', function () {
 
-    var cluster;
-    var client;
+    this.timeout(10000);
 
-    beforeEach(function () {
-        this.timeout(10000);
-        return RC.createCluster(null, fs.readFileSync(path.resolve(__dirname, 'hazelcast_crdtreplication_delayed.xml'), 'utf8')).then(function (cl) {
-            cluster = cl;
-            return RC.startMember(cluster.id);
-        }).then(function () {
-            return RC.startMember(cluster.id);
-        }).then(function () {
-            const cfg = new Config.ClientConfig();
-            cfg.clusterName = cluster.id;
-            return Client.newHazelcastClient(cfg);
-        }).then(function (value) {
-            client = value;
-        });
+    let cluster;
+    let client;
+
+    beforeEach(async function () {
+        cluster = await RC.createCluster(null,
+                fs.readFileSync(path.resolve(__dirname, 'hazelcast_crdtreplication_delayed.xml'), 'utf8'));
+        await RC.startMember(cluster.id);
+        await RC.startMember(cluster.id);
+        client = await Client.newHazelcastClient({ clusterName: cluster.id });
     });
 
-    afterEach(function () {
-        this.timeout(10000);
-        client.shutdown();
+    afterEach(async function () {
+        await client.shutdown();
         return RC.terminateCluster(cluster.id);
     });
 
-    it('target replica killed, no replica is sufficiently up-to-date, get operation throws ConsistencyLostError', function () {
-        var pncounter;
-        return client.getPNCounter('pncounter').then(function (counter) {
-            pncounter = counter;
-            return pncounter.getAndAdd(3)
-        }).then(function () {
-            var currentReplicaAddress = pncounter.currentTargetReplicaAddress;
-            return RC.terminateMember(cluster.id, currentReplicaAddress.uuid.toString());
-        }).then(function () {
-            return expect(pncounter.addAndGet(10)).to.be.rejectedWith(Errors.ConsistencyLostError);
-        });
+    it('target replica killed, no replica is up-to-date, get operation throws ConsistencyLostError', async function () {
+        const pnCounter = await client.getPNCounter('pncounter');
+        await pnCounter.getAndAdd(3)
+        const currentReplicaAddress = pnCounter.currentTargetReplicaAddress;
+        await RC.terminateMember(cluster.id, currentReplicaAddress.uuid.toString());
+
+        await expect(pnCounter.addAndGet(10)).to.be.rejectedWith(ConsistencyLostError);
     });
 
-    it('target replica killed, no replica is sufficiently up-to-date, get operation may proceed after calling reset', function () {
-        var pncounter;
-        return client.getPNCounter('pncounter').then(function (counter) {
-            pncounter = counter;
-            return pncounter.getAndAdd(3);
-        }).then(function () {
-            var currentReplicaAddress = pncounter.currentTargetReplicaAddress;
-            return RC.terminateMember(cluster.id, currentReplicaAddress.uuid.toString());
-        }).then(function () {
-            return pncounter.reset();
-        }).then(function () {
-            return pncounter.addAndGet(10);
-        });
+    it('target replica killed, no replica is up-to-date, get operation proceeds after calling reset', async function () {
+        const pnCounter = await client.getPNCounter('pncounter');
+        await pnCounter.getAndAdd(3);
+        const currentReplicaAddress = pnCounter.currentTargetReplicaAddress;
+        await RC.terminateMember(cluster.id, currentReplicaAddress.uuid.toString());
+        await pnCounter.reset();
+        await pnCounter.addAndGet(10);
     })
 });

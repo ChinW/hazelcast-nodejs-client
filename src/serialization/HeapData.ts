@@ -13,24 +13,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
 import {murmur} from '../invocation/Murmur';
 import {Data} from './Data';
+import {NULL_TYPE_ID} from './DefaultSerializers';
 
+/** @internal */
 export const PARTITION_HASH_OFFSET = 0;
+/** @internal */
 export const TYPE_OFFSET = 4;
+/** @internal */
 export const DATA_OFFSET = 8;
+/** @internal */
 export const HEAP_DATA_OVERHEAD: number = DATA_OFFSET;
 
+/** @internal */
 export class HeapData implements Data {
 
     private payload: Buffer;
 
     constructor(buffer: Buffer) {
         if (buffer != null && buffer.length > 0 && buffer.length < HEAP_DATA_OVERHEAD) {
-            throw new RangeError('Data should be either empty or should contain more than ' + HEAP_DATA_OVERHEAD
-                + ' bytes! -> '
-                + buffer);
+            throw new RangeError('Data should be either empty or should contain more than '
+                + HEAP_DATA_OVERHEAD + ' bytes! -> ' + buffer);
         }
         this.payload = buffer;
     }
@@ -47,8 +53,7 @@ export class HeapData implements Data {
      */
     public getType(): number {
         if (this.totalSize() === 0) {
-            // TODO serialization null type
-            return 0;
+            return NULL_TYPE_ID;
         }
         return this.payload.readIntBE(TYPE_OFFSET, 4);
     }

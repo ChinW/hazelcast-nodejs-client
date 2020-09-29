@@ -13,13 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 'use strict';
 
-const expect = require('chai').expect;
-const HazelcastClient = require('../.').Client;
-const Config = require('../.').Config;
-const Controller = require('./RC');
+const { expect } = require('chai');
+const RC = require('./RC');
+const { Client } = require('../.');
 
 describe('AutoPipeliningDisabledTest', function () {
 
@@ -27,47 +25,35 @@ describe('AutoPipeliningDisabledTest', function () {
     let client;
     let map;
 
-    const createClient = (clusterId) => {
-        const cfg = new Config.ClientConfig();
-        cfg.clusterName = clusterId;
-        cfg.properties['hazelcast.client.autopipelining.enabled'] = false;
-        return HazelcastClient.newHazelcastClient(cfg);
-    };
-
-    before(function () {
+    before(async function () {
         this.timeout(32000);
-        return Controller.createCluster(null, null).then(c => {
-            cluster = c;
-            return Controller.startMember(cluster.id);
-        }).then(_ => {
-            return createClient(cluster.id);
-        }).then(c => {
-            client = c;
+        cluster = await RC.createCluster(null, null);
+        await RC.startMember(cluster.id);
+        client = await Client.newHazelcastClient({
+            clusterName: cluster.id,
+            properties: {
+                ['hazelcast.client.autopipelining.enabled']: false
+            }
         });
     });
 
-    beforeEach(function () {
-        return client.getMap('test').then(m => {
-            map = m;
-        });
+    beforeEach(async function () {
+        map = await client.getMap('test');
     });
 
-    afterEach(function () {
+    afterEach(async function () {
         return map.destroy();
     });
 
-    after(function () {
-        client.shutdown();
-        return Controller.terminateCluster(cluster.id);
+    after(async function () {
+        await client.shutdown();
+        return RC.terminateCluster(cluster.id);
     });
 
-    it('basic map operations work fine', function () {
-        return map.set('foo', 'bar')
-            .then(() => map.get('foo'))
-            .then(v => {
-                return expect(v).to.equal('bar');
-            });
+    it('basic map operations work fine', async function () {
+        await map.set('foo', 'bar');
+        const value = await map.get('foo');
+        expect(value).to.equal('bar');
     });
-
 });
 

@@ -15,9 +15,9 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
+import {BitsUtil} from '../util/BitsUtil';
 import {FixSizedTypesCodec} from './builtin/FixSizedTypesCodec';
-import {ClientMessage, Frame, RESPONSE_BACKUP_ACKS_OFFSET, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {ClientMessage, Frame, RESPONSE_BACKUP_ACKS_OFFSET, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import {StringCodec} from './builtin/StringCodec';
 import {Data} from '../serialization/Data';
 import {ListMultiFrameCodec} from './builtin/ListMultiFrameCodec';
@@ -33,10 +33,7 @@ const REQUEST_OVERFLOW_POLICY_OFFSET = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_I
 const REQUEST_INITIAL_FRAME_SIZE = REQUEST_OVERFLOW_POLICY_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 const RESPONSE_RESPONSE_OFFSET = RESPONSE_BACKUP_ACKS_OFFSET + BitsUtil.BYTE_SIZE_IN_BYTES;
 
-export interface RingbufferAddAllResponseParams {
-    response: Long;
-}
-
+/** @internal */
 export class RingbufferAddAllCodec {
     static encodeRequest(name: string, valueList: Data[], overflowPolicy: number): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -53,11 +50,9 @@ export class RingbufferAddAllCodec {
         return clientMessage;
     }
 
-    static decodeResponse(clientMessage: ClientMessage): RingbufferAddAllResponseParams {
+    static decodeResponse(clientMessage: ClientMessage): Long {
         const initialFrame = clientMessage.nextFrame();
 
-        return {
-            response: FixSizedTypesCodec.decodeLong(initialFrame.content, RESPONSE_RESPONSE_OFFSET),
-        };
+        return FixSizedTypesCodec.decodeLong(initialFrame.content, RESPONSE_RESPONSE_OFFSET);
     }
 }

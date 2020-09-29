@@ -15,9 +15,9 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
+import {BitsUtil} from '../util/BitsUtil';
 import {FixSizedTypesCodec} from './builtin/FixSizedTypesCodec';
-import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import * as Long from 'long';
 import {StringCodec} from './builtin/StringCodec';
 import {Data} from '../serialization/Data';
@@ -32,10 +32,7 @@ const REQUEST_MESSAGE_TYPE = 197888;
 const REQUEST_TIMEOUT_MILLIS_OFFSET = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 const REQUEST_INITIAL_FRAME_SIZE = REQUEST_TIMEOUT_MILLIS_OFFSET + BitsUtil.LONG_SIZE_IN_BYTES;
 
-export interface QueuePollResponseParams {
-    response: Data;
-}
-
+/** @internal */
 export class QueuePollCodec {
     static encodeRequest(name: string, timeoutMillis: Long): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -51,12 +48,10 @@ export class QueuePollCodec {
         return clientMessage;
     }
 
-    static decodeResponse(clientMessage: ClientMessage): QueuePollResponseParams {
+    static decodeResponse(clientMessage: ClientMessage): Data {
         // empty initial frame
         clientMessage.nextFrame();
 
-        return {
-            response: CodecUtil.decodeNullable(clientMessage, DataCodec.decode),
-        };
+        return CodecUtil.decodeNullable(clientMessage, DataCodec.decode);
     }
 }

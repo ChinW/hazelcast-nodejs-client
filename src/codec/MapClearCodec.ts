@@ -15,8 +15,8 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
-import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {BitsUtil} from '../util/BitsUtil';
+import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import {StringCodec} from './builtin/StringCodec';
 
 // hex: 0x012D00
@@ -26,6 +26,7 @@ const REQUEST_MESSAGE_TYPE = 77056;
 
 const REQUEST_INITIAL_FRAME_SIZE = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
+/** @internal */
 export class MapClearCodec {
     static encodeRequest(name: string): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();

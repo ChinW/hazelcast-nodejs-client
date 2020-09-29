@@ -15,8 +15,8 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
-import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {BitsUtil} from '../util/BitsUtil';
+import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import {StringCodec} from './builtin/StringCodec';
 import {Data} from '../serialization/Data';
 import {DataCodec} from './builtin/DataCodec';
@@ -28,10 +28,7 @@ const REQUEST_MESSAGE_TYPE = 70656;
 
 const REQUEST_INITIAL_FRAME_SIZE = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
-export interface MapAddInterceptorResponseParams {
-    response: string;
-}
-
+/** @internal */
 export class MapAddInterceptorCodec {
     static encodeRequest(name: string, interceptor: Data): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -47,12 +44,10 @@ export class MapAddInterceptorCodec {
         return clientMessage;
     }
 
-    static decodeResponse(clientMessage: ClientMessage): MapAddInterceptorResponseParams {
+    static decodeResponse(clientMessage: ClientMessage): string {
         // empty initial frame
         clientMessage.nextFrame();
 
-        return {
-            response: StringCodec.decode(clientMessage),
-        };
+        return StringCodec.decode(clientMessage);
     }
 }

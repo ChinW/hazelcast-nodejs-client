@@ -13,10 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
 import {ClassDefinition} from './ClassDefinition';
-import {HazelcastSerializationError} from '../../HazelcastError';
+import {HazelcastSerializationError} from '../../core';
 
+/** @internal */
 export class ClassDefinitionContext {
     private factoryId: number;
 
@@ -44,7 +46,8 @@ export class ClassDefinitionContext {
             throw new HazelcastSerializationError(`This factory's number is ${this.factoryId}.
             Intended factory id is ${classDefinition.getFactoryId()}`);
         }
-        const cdKey = ClassDefinitionContext.encodeVersionedClassId(classDefinition.getClassId(), classDefinition.getVersion());
+        const cdKey = ClassDefinitionContext.encodeVersionedClassId(
+            classDefinition.getClassId(), classDefinition.getVersion());
         const current = this.classDefs[cdKey];
         if (current == null) {
             this.classDefs[cdKey] = classDefinition;
@@ -52,8 +55,8 @@ export class ClassDefinitionContext {
         }
 
         if (!current.equals(classDefinition)) {
-            throw new HazelcastSerializationError(`Incompatible class definition with same class id:
-             ${classDefinition.getClassId()}`);
+            throw new HazelcastSerializationError('Incompatible class definition with same class id: '
+                + classDefinition.getClassId());
         }
 
         return classDefinition;

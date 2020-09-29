@@ -13,22 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
-import * as Promise from 'bluebird';
 import {BuildInfo} from '../BuildInfo';
-import HazelcastClient from '../HazelcastClient';
+import {HazelcastClient} from '../HazelcastClient';
 import {Data} from '../serialization/Data';
-import {ClientMessage} from '../ClientMessage';
+import {ClientMessage} from '../protocol/ClientMessage';
 import {UUID} from '../core/UUID';
 
 /**
  * Common super class for any proxy.
+ * @internal
  */
-export class BaseProxy {
+export abstract class BaseProxy {
 
     protected client: HazelcastClient;
-    protected name: string;
-    protected serviceName: string;
+    protected readonly name: string;
+    protected readonly serviceName: string;
 
     constructor(client: HazelcastClient, serviceName: string, name: string) {
         this.client = client;
@@ -40,40 +41,20 @@ export class BaseProxy {
         return this.name;
     }
 
-    /**
-     * Returns name of the proxy.
-     * @returns
-     */
     getName(): string {
         return this.name;
     }
 
-    /**
-     * Returns name of the service which this proxy belongs to.
-     * Refer to service field of {@link ProxyManager} for service names.
-     * @returns
-     */
     getServiceName(): string {
         return this.serviceName;
     }
 
-    /**
-     * Deletes the proxy object and frees allocated resources on cluster.
-     * @returns
-     */
     destroy(): Promise<void> {
         return this.client.getProxyManager().destroyProxy(this.name, this.serviceName).then(() => {
             return this.postDestroy();
         });
     }
 
-    /**
-     * Destroys this client proxy instance locally without issuing distributed
-     * object destroy request to the cluster as the destroy method does.
-     * <p>
-     * The local destruction operation still may perform some communication
-     * with the cluster; for example, to unregister remote event subscriptions.
-     */
     destroyLocally(): Promise<void> {
         return this.postDestroy();
     }

@@ -15,9 +15,9 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
+import {BitsUtil} from '../util/BitsUtil';
 import {FixSizedTypesCodec} from './builtin/FixSizedTypesCodec';
-import {ClientMessage, Frame, RESPONSE_BACKUP_ACKS_OFFSET, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {ClientMessage, Frame, RESPONSE_BACKUP_ACKS_OFFSET, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import {StringCodec} from './builtin/StringCodec';
 import * as Long from 'long';
 
@@ -29,10 +29,7 @@ const REQUEST_MESSAGE_TYPE = 1507584;
 const REQUEST_INITIAL_FRAME_SIZE = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 const RESPONSE_RESPONSE_OFFSET = RESPONSE_BACKUP_ACKS_OFFSET + BitsUtil.BYTE_SIZE_IN_BYTES;
 
-export interface RingbufferSizeResponseParams {
-    response: Long;
-}
-
+/** @internal */
 export class RingbufferSizeCodec {
     static encodeRequest(name: string): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -47,11 +44,9 @@ export class RingbufferSizeCodec {
         return clientMessage;
     }
 
-    static decodeResponse(clientMessage: ClientMessage): RingbufferSizeResponseParams {
+    static decodeResponse(clientMessage: ClientMessage): Long {
         const initialFrame = clientMessage.nextFrame();
 
-        return {
-            response: FixSizedTypesCodec.decodeLong(initialFrame.content, RESPONSE_RESPONSE_OFFSET),
-        };
+        return FixSizedTypesCodec.decodeLong(initialFrame.content, RESPONSE_RESPONSE_OFFSET);
     }
 }

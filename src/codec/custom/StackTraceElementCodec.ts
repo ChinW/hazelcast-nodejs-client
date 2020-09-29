@@ -16,15 +16,16 @@
 
 /* eslint-disable max-len */
 import {FixSizedTypesCodec} from '../builtin/FixSizedTypesCodec';
-import {BitsUtil} from '../../BitsUtil';
-import {ClientMessage, BEGIN_FRAME, END_FRAME, Frame, DEFAULT_FLAGS} from '../../ClientMessage';
+import {BitsUtil} from '../../util/BitsUtil';
+import {ClientMessage, BEGIN_FRAME, END_FRAME, Frame, DEFAULT_FLAGS} from '../../protocol/ClientMessage';
 import {CodecUtil} from '../builtin/CodecUtil';
-import {StringCodec} from '../builtin/StringCodec';
 import {StackTraceElement} from '../../protocol/StackTraceElement';
+import {StringCodec} from '../builtin/StringCodec';
 
 const LINE_NUMBER_OFFSET = 0;
 const INITIAL_FRAME_SIZE = LINE_NUMBER_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
+/** @internal */
 export class StackTraceElementCodec {
     static encode(clientMessage: ClientMessage, stackTraceElement: StackTraceElement): void {
         clientMessage.addFrame(BEGIN_FRAME.copy());
@@ -45,10 +46,11 @@ export class StackTraceElementCodec {
         clientMessage.nextFrame();
 
         const initialFrame = clientMessage.nextFrame();
-        const lineNumber: number = FixSizedTypesCodec.decodeInt(initialFrame.content, LINE_NUMBER_OFFSET);
-        const className: string = StringCodec.decode(clientMessage);
-        const methodName: string = StringCodec.decode(clientMessage);
-        const fileName: string = CodecUtil.decodeNullable(clientMessage, StringCodec.decode);
+        const lineNumber = FixSizedTypesCodec.decodeInt(initialFrame.content, LINE_NUMBER_OFFSET);
+
+        const className = StringCodec.decode(clientMessage);
+        const methodName = StringCodec.decode(clientMessage);
+        const fileName = CodecUtil.decodeNullable(clientMessage, StringCodec.decode);
 
         CodecUtil.fastForwardToEndFrame(clientMessage);
 

@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
-import * as Promise from 'bluebird';
 import {EventEmitter} from 'events';
-import HazelcastClient from '../HazelcastClient';
+import {HazelcastClient} from '../HazelcastClient';
 import {
     AuthenticationError,
     ClientNotActiveError,
@@ -26,38 +26,42 @@ import {
     IllegalStateError,
     InvalidConfigurationError,
     IOError,
-} from '../HazelcastError';
+    UUID,
+    LoadBalancer,
+    AddressImpl,
+    MemberImpl
+} from '../core';
 import {ClientConnection} from './ClientConnection';
 import * as net from 'net';
 import * as tls from 'tls';
 import {
     AddressHelper,
     cancelRepetitionTask,
+    deferredPromise,
     DeferredPromise,
-    loadNameFromPath,
     scheduleWithRepetition,
     shuffleArray,
     Task,
-} from '../Util';
+    timedPromise
+} from '../util/Util';
 import {BasicSSLOptionsFactory} from '../connection/BasicSSLOptionsFactory';
 import {ILogger} from '../logging/ILogger';
-import {SSLOptionsFactory} from '../connection/SSLOptionsFactory';
-import {Address} from '../Address';
-import {HeartbeatManager} from '../HeartbeatManager';
+import {HeartbeatManager} from './HeartbeatManager';
 import {UuidUtil} from '../util/UuidUtil';
 import {WaitStrategy} from './WaitStrategy';
 import {ReconnectMode} from '../config/ConnectionStrategyConfig';
-import {LoadBalancer} from '../LoadBalancer';
-import {UUID} from '../core/UUID';
-import {ClientConfig} from '../config/Config';
-import {LifecycleState} from '../LifecycleService';
-import {ClientMessage} from '../ClientMessage';
+import {ClientConfigImpl} from '../config/Config';
+import {LifecycleState, LifecycleServiceImpl} from '../LifecycleService';
+import {ClientMessage} from '../protocol/ClientMessage';
 import {BuildInfo} from '../BuildInfo';
 import {ClientAuthenticationCustomCodec} from '../codec/ClientAuthenticationCustomCodec';
-import {ClientAuthenticationCodec, ClientAuthenticationResponseParams} from '../codec/ClientAuthenticationCodec';
+import {
+    ClientAuthenticationCodec,
+    ClientAuthenticationResponseParams
+} from '../codec/ClientAuthenticationCodec';
 import {AuthenticationStatus} from '../protocol/AuthenticationStatus';
 import {Invocation} from '../invocation/InvocationService';
-import {Member} from '../core/Member';
+import {PartitionServiceImpl} from '../PartitionService';
 
 const CONNECTION_REMOVED_EVENT_NAME = 'connectionRemoved';
 const CONNECTION_ADDED_EVENT_NAME = 'connectionAdded';
@@ -96,6 +100,7 @@ enum ClientState {
 
 /**
  * Maintains connections between the client and members of the cluster.
+ * @internal
  */
 export class ClientConnectionManager extends EventEmitter {
 
@@ -116,31 +121,31 @@ export class ClientConnectionManager extends EventEmitter {
     private waitStrategy: WaitStrategy;
     private loadBalancer: LoadBalancer;
     private activeConnections = new Map<string, ClientConnection>();
-    private pendingConnections = new Map<string, Promise.Resolver<ClientConnection>>();
+    private pendingConnections = new Map<string, DeferredPromise<ClientConnection>>();
     private clusterId: UUID;
     private clientState = ClientState.INITIAL;
     private connectToClusterTaskSubmitted: boolean;
     private reconnectToMembersTask: Task;
-    private connectingAddresses = new Set<Address>();
+    private connectingAddresses = new Set<AddressImpl>();
 
     constructor(client: HazelcastClient) {
         super();
         this.client = client;
         this.loadBalancer = client.getLoadBalancer();
-        this.labels = Array.from(client.getConfig().labels);
+        this.labels = client.getConfig().clientLabels;
         this.logger = this.client.getLoggingService().getLogger();
         this.connectionTimeoutMillis = this.initConnectionTimeoutMillis();
         this.heartbeatManager = new HeartbeatManager(client, this);
         this.authenticationTimeout = this.heartbeatManager.getHeartbeatTimeout();
         this.shuffleMemberList = client.getConfig().properties['hazelcast.client.shuffle.member.list'] as boolean;
-        this.isSmartRoutingEnabled = client.getConfig().networkConfig.smartRouting;
-        this.waitStrategy = this.initWaitStrategy(client.getConfig());
-        const connectionStrategyConfig = client.getConfig().connectionStrategyConfig;
+        this.isSmartRoutingEnabled = client.getConfig().network.smartRouting;
+        this.waitStrategy = this.initWaitStrategy(client.getConfig() as ClientConfigImpl);
+        const connectionStrategyConfig = client.getConfig().connectionStrategy;
         this.asyncStart = connectionStrategyConfig.asyncStart;
         this.reconnectMode = connectionStrategyConfig.reconnectMode;
     }
 
-    public start(): Promise<void> {
+    start(): Promise<void> {
         if (this.alive) {
             return Promise.resolve();
         }
@@ -155,7 +160,7 @@ export class ClientConnectionManager extends EventEmitter {
             });
     }
 
-    public connectToAllClusterMembers(): Promise<void> {
+    connectToAllClusterMembers(): Promise<void> {
         if (!this.isSmartRoutingEnabled) {
             return Promise.resolve();
         }
@@ -164,7 +169,7 @@ export class ClientConnectionManager extends EventEmitter {
         return this.tryConnectToAllClusterMembers(members);
     }
 
-    public shutdown(): void {
+    shutdown(): void {
         if (!this.alive) {
             return;
         }
@@ -177,20 +182,21 @@ export class ClientConnectionManager extends EventEmitter {
             pending.reject(new ClientNotActiveError('Hazelcast client is shutting down'));
         });
 
+        // HeartbeatManager should be shut down before connections are closed
+        this.heartbeatManager.shutdown();
         this.activeConnections.forEach((connection) => {
             connection.close('Hazelcast client is shutting down', null);
         });
 
         this.removeAllListeners(CONNECTION_REMOVED_EVENT_NAME);
         this.removeAllListeners(CONNECTION_ADDED_EVENT_NAME);
-        this.heartbeatManager.shutdown();
     }
 
-    public getConnection(uuid: UUID): ClientConnection {
+    getConnection(uuid: UUID): ClientConnection {
         return this.activeConnections.get(uuid.toString());
     }
 
-    public checkIfInvocationAllowed(): Error {
+    checkIfInvocationAllowed(): Error {
         const state = this.clientState;
         if (state === ClientState.INITIALIZED_ON_CLUSTER && this.activeConnections.size > 0) {
             return null;
@@ -211,19 +217,19 @@ export class ClientConnectionManager extends EventEmitter {
         return error;
     }
 
-    public getActiveConnections(): ClientConnection[] {
+    getActiveConnections(): ClientConnection[] {
         return Array.from(this.activeConnections.values());
     }
 
-    public isAlive(): boolean {
+    isAlive(): boolean {
         return this.alive;
     }
 
-    public getClientUuid(): UUID {
+    getClientUuid(): UUID {
         return this.clientUuid;
     }
 
-    public getOrConnect(address: Address): Promise<ClientConnection> {
+    getOrConnect(address: AddressImpl): Promise<ClientConnection> {
         if (!this.client.getLifecycleService().isRunning()) {
             return Promise.reject(new ClientNotActiveError('Client is not active.'));
         }
@@ -239,20 +245,20 @@ export class ClientConnectionManager extends EventEmitter {
             return pendingConnection.promise;
         }
 
-        const connectionResolver: Promise.Resolver<ClientConnection> = DeferredPromise<ClientConnection>();
+        const connectionResolver: DeferredPromise<ClientConnection> = deferredPromise<ClientConnection>();
         this.pendingConnections.set(addressKey, connectionResolver);
 
         const processResponseCallback = (msg: ClientMessage): void => {
             this.client.getInvocationService().processResponse(msg);
         };
 
-        let translatedAddress: Address;
+        let translatedAddress: AddressImpl;
         let clientConnection: ClientConnection;
         this.translate(address)
             .then((translated) => {
                 translatedAddress = translated;
                 if (translatedAddress == null) {
-                    throw new RangeError(`Address Translator could not translate address ${address}`);
+                    throw new RangeError(`Address translator could not translate address ${address}`);
                 }
                 return this.triggerConnect(translatedAddress);
             })
@@ -265,12 +271,14 @@ export class ClientConnectionManager extends EventEmitter {
             .then(() => connectionResolver.resolve(clientConnection))
             .catch((error) => connectionResolver.reject(error));
 
-        return connectionResolver.promise
-            .timeout(this.connectionTimeoutMillis, new HazelcastError(`Connection timed out to address ${address}.`))
-            .finally(() => this.pendingConnections.delete(addressKey));
+        return timedPromise(
+            connectionResolver.promise,
+            this.connectionTimeoutMillis,
+            new HazelcastError(`Connection timed out to address ${address}.`)
+        ).finally(() => this.pendingConnections.delete(addressKey));
     }
 
-    public getRandomConnection(): ClientConnection {
+    getRandomConnection(): ClientConnection {
         if (this.isSmartRoutingEnabled) {
             const member = this.loadBalancer.next();
             if (member != null) {
@@ -290,42 +298,41 @@ export class ClientConnectionManager extends EventEmitter {
         }
     }
 
-    public onConnectionClose(connection: ClientConnection): void {
+    onConnectionClose(connection: ClientConnection): void {
         const endpoint = connection.getRemoteAddress();
         const memberUuid = connection.getRemoteUuid();
 
         if (endpoint == null) {
-            this.logger.trace('ConnectionManager', 'Destroying ' + connection +
-                ', but it has endpoint set to null -> not removing it from a connection map');
+            this.logger.trace('ConnectionManager', 'Destroying ' + connection
+                + ', but it has endpoint set to null -> not removing it from a connection map');
             return;
         }
 
         if (memberUuid != null && this.activeConnections.delete(memberUuid.toString())) {
-            this.logger.info('ConnectionManager', 'Removed connection to endpoint: ' +
-                endpoint + ':' + memberUuid + ', connection: ' + connection);
+            this.logger.info('ConnectionManager', 'Removed connection to endpoint: '
+                + endpoint + ':' + memberUuid + ', connection: ' + connection);
             if (this.activeConnections.size === 0) {
                 if (this.clientState === ClientState.INITIALIZED_ON_CLUSTER) {
                     this.emitLifecycleEvent(LifecycleState.DISCONNECTED);
                 }
                 this.triggerClusterReconnection();
             }
-
             this.emitConnectionRemovedEvent(connection);
         } else {
-            this.logger.trace('ConnectionManager', 'Destroying a connection, but there is no mapping ' +
-                endpoint + ':' + memberUuid + '->' + connection + ' in the connection map.)');
+            this.logger.trace('ConnectionManager', 'Destroying a connection, but there is no mapping '
+                + endpoint + ':' + memberUuid + '->' + connection + ' in the connection map.)');
         }
     }
 
-    private initWaitStrategy(config: ClientConfig): WaitStrategy {
-        const connectionStrategyConfig = config.connectionStrategyConfig;
-        const retryConfig = connectionStrategyConfig.connectionRetryConfig;
-        return new WaitStrategy(retryConfig.initialBackoffMillis, retryConfig.maxBackoffMillis, retryConfig.multiplier,
-            retryConfig.clusterConnectTimeoutMillis, retryConfig.jitter, this.logger);
+    private initWaitStrategy(config: ClientConfigImpl): WaitStrategy {
+        const connectionStrategyConfig = config.connectionStrategy;
+        const retryConfig = connectionStrategyConfig.connectionRetry;
+        return new WaitStrategy(retryConfig.initialBackoffMillis, retryConfig.maxBackoffMillis,
+            retryConfig.multiplier, retryConfig.clusterConnectTimeoutMillis, retryConfig.jitter, this.logger);
     }
 
     private initConnectionTimeoutMillis(): number {
-        const networkConfig = this.client.getConfig().networkConfig;
+        const networkConfig = this.client.getConfig().network;
         const connTimeout = networkConfig.connectionTimeout;
         return connTimeout === 0 ? SET_TIMEOUT_MAX_DELAY : connTimeout;
     }
@@ -352,8 +359,8 @@ export class ClientConnectionManager extends EventEmitter {
                 }
             })
             .catch((error: Error) => {
-                this.logger.warn('ConnectionManager', 'Could not connect to any cluster, shutting down ' +
-                    'the client: ' + error.message);
+                this.logger.warn('ConnectionManager', 'Could not connect to any cluster, shutting down '
+                    + 'the client: ' + error.message);
                 this.shutdownClient();
             });
 
@@ -369,10 +376,9 @@ export class ClientConnectionManager extends EventEmitter {
                 if (isConnected) {
                     return;
                 }
-                this.logger.info('ConnectionManager', 'Unable to connect any address from the cluster ' +
-                    'with the name: ' + this.client.getConfig().clusterName +
-                    '. The following addresses were tried: ' +
-                    Array.from(triedAddresses));
+                this.logger.info('ConnectionManager', 'Unable to connect any address from the cluster '
+                    + 'with the name: ' + this.client.getConfig().clusterName
+                    + '. The following addresses were tried: ' + Array.from(triedAddresses));
 
                 const message = this.client.getLifecycleService().isRunning()
                     ? 'Unable to connect any cluster.' : 'Client is being shutdown.';
@@ -403,14 +409,20 @@ export class ClientConnectionManager extends EventEmitter {
                         return false;
                     });
             })
-            .catch(ClientNotAllowedInClusterError, InvalidConfigurationError, (error: Error) => {
-                this.logger.warn('ConnectionManager', 'Stopped trying on the cluster: ' +
-                    this.client.getConfig().clusterName + ' reason: ' + error.message);
-                return false;
+            .catch((error: Error) => {
+                if (error instanceof ClientNotAllowedInClusterError
+                        || error instanceof InvalidConfigurationError) {
+                    this.logger.warn('ConnectionManager', 'Stopped trying on the cluster: '
+                        + this.client.getConfig().clusterName + ' reason: ' + error.message);
+                    return false;
+                }
+                throw error;
             });
     }
 
-    private tryConnectingToAddress(index: number, addresses: Address[], triedAddresses: Set<string>): Promise<boolean> {
+    private tryConnectingToAddress(index: number,
+                                   addresses: AddressImpl[],
+                                   triedAddresses: Set<string>): Promise<boolean> {
         if (index >= addresses.length) {
             return Promise.resolve(false);
         }
@@ -428,21 +440,21 @@ export class ClientConnectionManager extends EventEmitter {
             });
     }
 
-    private connect(address: Address): Promise<ClientConnection> {
+    private connect(address: AddressImpl): Promise<ClientConnection> {
         this.logger.info('ConnectionManager', 'Trying to connect to ' + address);
         return this.getOrConnect(address)
             .catch((error) => {
-                this.logger.warn('ConnectionManager', 'Error during initial connection to ' + address + ' ' +
-                    error);
+                this.logger.warn('ConnectionManager', 'Error during initial connection to '
+                    + address + ' ' + error);
                 return null;
             });
     }
 
     private emitLifecycleEvent(state: LifecycleState): void {
-        this.client.getLifecycleService().emitLifecycleEvent(state);
+        (this.client.getLifecycleService() as LifecycleServiceImpl).emitLifecycleEvent(state);
     }
 
-    private getPossibleMemberAddresses(): Promise<Address[]> {
+    private getPossibleMemberAddresses(): Promise<AddressImpl[]> {
         const addresses = this.client.getClusterService().getMembers()
             .map(((member) => member.address.toString()));
 
@@ -454,8 +466,8 @@ export class ClientConnectionManager extends EventEmitter {
 
         return addressProvider.loadAddresses()
             .catch((error: Error) => {
-                this.logger.warn('ConnectionManager', 'Error from AddressProvider ' + addressProvider +
-                    ', error: ' + error.message);
+                this.logger.warn('ConnectionManager', 'Error from AddressProvider '
+                    + addressProvider + ', error: ' + error.message);
                 return new Array<string>();
             })
             .then((providerAddresses) => {
@@ -463,7 +475,7 @@ export class ClientConnectionManager extends EventEmitter {
                     shuffleArray(providerAddresses);
                 }
                 const allAddresses = Array.from(new Set([...addresses, ...providerAddresses]));
-                const result: Address[] = [];
+                const result: AddressImpl[] = [];
                 for (const address of allAddresses) {
                     result.push(...AddressHelper.getSocketAddresses(address));
                 }
@@ -471,7 +483,7 @@ export class ClientConnectionManager extends EventEmitter {
             });
     }
 
-    private getConnectionFromAddress(address: Address): ClientConnection {
+    private getConnectionFromAddress(address: AddressImpl): ClientConnection {
         for (const connection of this.getActiveConnections()) {
             if (connection.getRemoteAddress().equals(address)) {
                 return connection;
@@ -482,7 +494,7 @@ export class ClientConnectionManager extends EventEmitter {
 
     private initiateCommunication(socket: net.Socket): Promise<void> {
         // Send the protocol version
-        const deferred = DeferredPromise<void>();
+        const deferred = deferredPromise<void>();
         socket.write(BINARY_PROTOCOL_VERSION as any, (err: Error) => {
             if (err) {
                 deferred.reject(err);
@@ -493,18 +505,16 @@ export class ClientConnectionManager extends EventEmitter {
         return deferred.promise;
     }
 
-    private triggerConnect(translatedAddress: Address): Promise<net.Socket> {
-        if (this.client.getConfig().networkConfig.sslConfig.enabled) {
-            if (this.client.getConfig().networkConfig.sslConfig.sslOptions) {
-                const opts = this.client.getConfig().networkConfig.sslConfig.sslOptions;
+    private triggerConnect(translatedAddress: AddressImpl): Promise<net.Socket> {
+        if (this.client.getConfig().network.ssl.enabled) {
+            if (this.client.getConfig().network.ssl.sslOptions) {
+                const opts = this.client.getConfig().network.ssl.sslOptions;
                 return this.connectTLSSocket(translatedAddress, opts);
-            } else if (this.client.getConfig().networkConfig.sslConfig.sslOptionsFactoryConfig) {
-                const factoryConfig = this.client.getConfig().networkConfig.sslConfig.sslOptionsFactoryConfig;
-                const factoryProperties = this.client.getConfig().networkConfig.sslConfig.sslOptionsFactoryProperties;
-                let factory: SSLOptionsFactory;
-                if (factoryConfig.path) {
-                    factory = new (loadNameFromPath(factoryConfig.path, factoryConfig.exportedName))();
-                } else {
+            } else if (this.client.getConfig().network.ssl.sslOptionsFactory
+                       || this.client.getConfig().network.ssl.sslOptionsFactoryProperties) {
+                const factoryProperties = this.client.getConfig().network.ssl.sslOptionsFactoryProperties;
+                let factory = this.client.getConfig().network.ssl.sslOptionsFactory;
+                if (factory == null) {
                     factory = new BasicSSLOptionsFactory();
                 }
                 return factory.init(factoryProperties).then(() => {
@@ -512,7 +522,7 @@ export class ClientConnectionManager extends EventEmitter {
                 });
             } else {
                 // the default behavior when ssl is enabled
-                const opts = this.client.getConfig().networkConfig.sslConfig.sslOptions = {
+                const opts = this.client.getConfig().network.ssl.sslOptions = {
                     checkServerIdentity: (): any => null,
                     rejectUnauthorized: true,
                 };
@@ -523,8 +533,8 @@ export class ClientConnectionManager extends EventEmitter {
         }
     }
 
-    private connectTLSSocket(address: Address, configOpts: any): Promise<tls.TLSSocket> {
-        const connectionResolver = DeferredPromise<tls.TLSSocket>();
+    private connectTLSSocket(address: AddressImpl, configOpts: any): Promise<tls.TLSSocket> {
+        const connectionResolver = deferredPromise<tls.TLSSocket>();
         const socket = tls.connect(address.port, address.host, configOpts);
         socket.once('secureConnect', () => {
             connectionResolver.resolve(socket);
@@ -542,8 +552,8 @@ export class ClientConnectionManager extends EventEmitter {
         return connectionResolver.promise;
     }
 
-    private connectNetSocket(address: Address): Promise<net.Socket> {
-        const connectionResolver = DeferredPromise<net.Socket>();
+    private connectNetSocket(address: AddressImpl): Promise<net.Socket> {
+        const connectionResolver = deferredPromise<net.Socket>();
         const socket = net.connect(address.port, address.host);
         socket.once('connect', () => {
             connectionResolver.resolve(socket);
@@ -569,12 +579,12 @@ export class ClientConnectionManager extends EventEmitter {
         this.emit(CONNECTION_REMOVED_EVENT_NAME, connection);
     }
 
-    private translate(target: Address): Promise<Address> {
+    private translate(target: AddressImpl): Promise<AddressImpl> {
         const addressProvider = this.client.getAddressProvider();
         return addressProvider.translate(target)
             .catch((error: Error) => {
-                this.logger.warn('ConnectionManager', 'Failed to translate address ' + target +
-                    ' via address provider ' + error.message);
+                this.logger.warn('ConnectionManager', 'Failed to translate address '
+                    + target + ' via address provider ' + error.message);
                 return Promise.reject(error);
             });
     }
@@ -593,7 +603,7 @@ export class ClientConnectionManager extends EventEmitter {
 
     private shutdownClient(): void {
         try {
-            this.client.getLifecycleService().shutdown();
+            (this.client.getLifecycleService() as LifecycleServiceImpl).shutdown();
         } catch (e) {
             this.logger.error('ConnectionManager', `Error during client shutdown ${e}`);
         }
@@ -608,7 +618,6 @@ export class ClientConnectionManager extends EventEmitter {
 
         for (const member of this.client.getClusterService().getMembers()) {
             const address = member.address;
-
             if (this.getConnectionFromAddress(address) == null) {
                 if (this.connectingAddresses.has(address)) {
                     continue;
@@ -631,40 +640,38 @@ export class ClientConnectionManager extends EventEmitter {
         const request = this.encodeAuthenticationRequest();
         const invocation = new Invocation(this.client, request);
         invocation.connection = connection;
-        return this.client.getInvocationService()
-            .invokeUrgent(invocation)
-            .timeout(this.authenticationTimeout)
-            .catch((e) => {
-                connection.close('Failed to authenticate connection', e);
-                throw e;
-            })
-            .then((responseMessage) => {
-                const response = ClientAuthenticationCodec.decodeResponse(responseMessage);
-                if (response.status === AuthenticationStatus.AUTHENTICATED) {
-                    this.handleSuccessfulAuth(connection, response);
-                } else {
-                    let error: Error;
-                    switch (response.status) {
-                        case AuthenticationStatus.CREDENTIALS_FAILED:
-                            error = new AuthenticationError('Authentication failed. The configured cluster name on ' +
-                                'the client does not match the one configured in the cluster or ' +
-                                'the credentials set in the client security config could not be authenticated');
-                            break;
-                        case AuthenticationStatus.SERIALIZATION_VERSION_MISMATCH:
-                            error = new IllegalStateError('Server serialization version ' +
-                                'does not match to client.');
-                            break;
-                        case AuthenticationStatus.NOT_ALLOWED_IN_CLUSTER:
-                            error = new ClientNotAllowedInClusterError('Client is not allowed in the cluster');
-                            break;
-                        default:
-                            error = new AuthenticationError('Authentication status code not supported. Status: ' +
-                                response.status);
-                    }
-                    connection.close('Failed to authenticate connection', error);
-                    return Promise.reject(error);
+        return timedPromise(
+            this.client.getInvocationService().invokeUrgent(invocation),
+            this.authenticationTimeout
+        ).catch((e) => {
+            connection.close('Failed to authenticate connection', e);
+            throw e;
+        }).then((responseMessage) => {
+            const response = ClientAuthenticationCodec.decodeResponse(responseMessage);
+            if (response.status === AuthenticationStatus.AUTHENTICATED) {
+                this.handleSuccessfulAuth(connection, response);
+            } else {
+                let error: Error;
+                switch (response.status) {
+                    case AuthenticationStatus.CREDENTIALS_FAILED:
+                        error = new AuthenticationError('Authentication failed. The configured cluster name on '
+                            + 'the client does not match the one configured in the cluster or '
+                            + 'the credentials set in the client security config could not be authenticated');
+                        break;
+                    case AuthenticationStatus.SERIALIZATION_VERSION_MISMATCH:
+                        error = new IllegalStateError('Server serialization version does not match to client.');
+                        break;
+                    case AuthenticationStatus.NOT_ALLOWED_IN_CLUSTER:
+                        error = new ClientNotAllowedInClusterError('Client is not allowed in the cluster');
+                        break;
+                    default:
+                        error = new AuthenticationError('Authentication status code not supported. Status: '
+                            + response.status);
                 }
-            });
+                connection.close('Failed to authenticate connection', error);
+                throw error;
+            }
+        });
     }
 
     private handleSuccessfulAuth(connection: ClientConnection, response: ClientAuthenticationResponseParams): void {
@@ -678,8 +685,8 @@ export class ClientConnectionManager extends EventEmitter {
         const initialConnection = this.activeConnections.size === 0;
         const changedCluster = initialConnection && this.clusterId != null && !newClusterId.equals(this.clusterId);
         if (changedCluster) {
-            this.logger.warn('ConnectionManager', 'Switching from current cluster: ' + this.clusterId +
-                ' to new cluster: ' + newClusterId);
+            this.logger.warn('ConnectionManager', 'Switching from current cluster: '
+                + this.clusterId + ' to new cluster: ' + newClusterId);
             this.client.onClusterRestart();
         }
 
@@ -695,9 +702,9 @@ export class ClientConnectionManager extends EventEmitter {
             }
         }
 
-        this.logger.info('ConnectionManager', 'Authenticated with server ' +
-            response.address + ':' + response.memberUuid + ', server version: ' + response.serverHazelcastVersion +
-            ', local address: ' + connection.getLocalAddress());
+        this.logger.info('ConnectionManager', 'Authenticated with server '
+            + response.address + ':' + response.memberUuid + ', server version: '
+            + response.serverHazelcastVersion + ', local address: ' + connection.getLocalAddress());
         this.emitConnectionAddedEvent(connection);
 
         // It could happen that this connection is already closed and
@@ -708,7 +715,6 @@ export class ClientConnectionManager extends EventEmitter {
         if (!connection.isAlive()) {
             this.onConnectionClose(connection);
         }
-
     }
 
     private encodeAuthenticationRequest(): ClientMessage {
@@ -732,57 +738,55 @@ export class ClientConnectionManager extends EventEmitter {
     }
 
     private checkPartitionCount(newPartitionCount: number): void {
-        const partitionService = this.client.getPartitionService();
+        const partitionService = this.client.getPartitionService() as PartitionServiceImpl;
         if (!partitionService.checkAndSetPartitionCount(newPartitionCount)) {
-            throw new ClientNotAllowedInClusterError('Client can not work with this cluster because it has a different ' +
-                'partition count. Expected partition count: ' + partitionService.getPartitionCount() +
-                ', member partition count: ' + newPartitionCount);
+            throw new ClientNotAllowedInClusterError('Client can not work with this cluster because it has a different '
+                + 'partition count. Expected partition count: ' + partitionService.getPartitionCount()
+                + ', member partition count: ' + newPartitionCount);
         }
     }
 
     private initializeClientOnCluster(targetClusterId: UUID): Promise<void> {
         if (!targetClusterId.equals(this.clusterId)) {
-            this.logger.warn('ConnectionManager', 'Won\'t send client state to cluster: ' + targetClusterId +
-                ' because switched to a new cluster: ' + this.clusterId);
+            this.logger.warn('ConnectionManager', 'Will not send client state to cluster: '
+                + targetClusterId + ', switched to a new cluster: ' + this.clusterId);
             return;
         }
 
         return this.client.sendStateToCluster()
             .then(() => {
                 if (targetClusterId.equals(this.clusterId)) {
-                    this.logger.trace('ConnectionManager', 'Client state is sent to cluster: ' +
-                        targetClusterId);
+                    this.logger.trace('ConnectionManager', 'Client state is sent to cluster: '
+                        + targetClusterId);
 
                     this.clientState = ClientState.INITIALIZED_ON_CLUSTER;
                     this.emitLifecycleEvent(LifecycleState.CONNECTED);
                 } else {
-                    this.logger.warn('ConnectionManager', 'Cannot set client state to initialized on ' +
-                        'cluster because current cluster id: ' + this.clusterId + ' is different than expected cluster id: ' +
-                        targetClusterId);
+                    this.logger.warn('ConnectionManager', 'Cannot set client state to initialized on '
+                        + 'cluster because current cluster id: ' + this.clusterId
+                        + ' is different than expected cluster id: ' + targetClusterId);
                 }
             })
             .catch((error: Error) => {
                 const clusterName = this.client.getConfig().clusterName;
-                this.logger.warn('ConnectionManager', 'Failure during sending state to the cluster: ' +
-                    error.message);
+                this.logger.warn('ConnectionManager', 'Failure during sending state to the cluster: '
+                    + error.message);
                 if (targetClusterId.equals(this.clusterId)) {
-                    this.logger.warn('ConnectionManager', 'Retrying sending state to the cluster: ' +
-                        targetClusterId + ', name: ' + clusterName);
+                    this.logger.warn('ConnectionManager', 'Retrying sending state to the cluster: '
+                        + targetClusterId + ', name: ' + clusterName);
                     return this.initializeClientOnCluster(targetClusterId);
                 }
             });
     }
 
-    private tryConnectToAllClusterMembers(members: Member[]): Promise<void> {
+    private tryConnectToAllClusterMembers(members: MemberImpl[]): Promise<void> {
         const promises: Array<Promise<void | ClientConnection>> = [];
-
         for (const member of members) {
             promises.push(this.getOrConnect(member.address)
                 .catch(() => {
-                    // No-op
+                    // no-op
                 }));
         }
-
         return Promise.all(promises)
             .then(() => undefined);
     }

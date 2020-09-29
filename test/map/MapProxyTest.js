@@ -13,52 +13,47 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+'use strict';
 
-var expect = require("chai").expect;
-var HazelcastClient = require("../../").Client;
-var Predicates = require("../../").Predicates;
-var Config = require('../../').Config;
-var Promise = require("bluebird");
-var Controller = require('./../RC');
-var Util = require('./../Util');
-var fs = require('fs');
-var _fillMap = require('../Util').fillMap;
+const { expect } = require('chai');
+const fs = require('fs');
 
+const RC = require('./../RC');
+const { Client, Predicates } = require('../../');
+const Util = require('./../Util');
+const fillMap = require('../Util').fillMap;
 
 function createController(nearCacheEnabled) {
     if (nearCacheEnabled) {
-        return Controller.createCluster(null, fs.readFileSync(__dirname + '/hazelcast_nearcache_batchinvalidation_false.xml', 'utf8'))
+        return RC.createCluster(null, fs.readFileSync(__dirname + '/hazelcast_nearcache_batchinvalidation_false.xml', 'utf8'));
     } else {
-        return Controller.createCluster(null, null);
+        return RC.createCluster(null, null);
     }
 }
 
 function createClient(nearCacheEnabled, clusterName) {
-    const cfg = new Config.ClientConfig();
-    cfg.clusterName = clusterName;
+    const cfg = {
+        clusterName,
+        nearCaches: {}
+    };
     if (nearCacheEnabled) {
-        var ncc = new Config.NearCacheConfig();
-        ncc.name = 'test';
-        ncc.timeToLiveSeconds = 1;
-        cfg.nearCacheConfigs['test'] = ncc;
+        cfg.nearCaches['test'] = { timeToLiveSeconds: 1 };
     }
-    return HazelcastClient.newHazelcastClient(cfg);
+    return Client.newHazelcastClient(cfg);
 }
 
-describe('MapProxy', function () {
+describe('MapProxyTest', function () {
     [false, true].forEach(function (nearCacheEnabled) {
+        describe('Near Cache: ' + nearCacheEnabled, function () {
 
-        describe("Near Cache: " + nearCacheEnabled, function () {
-
-            var cluster;
-            var client;
-            var map;
+            let cluster, client;
+            let map;
 
             before(function () {
                 this.timeout(32000);
                 return createController(nearCacheEnabled).then(function (res) {
                     cluster = res;
-                    return Controller.startMember(cluster.id);
+                    return RC.startMember(cluster.id);
                 }).then(function (m) {
                     return createClient(nearCacheEnabled, cluster.id).then(function (hazelcastClient) {
                         client = hazelcastClient;
@@ -69,7 +64,7 @@ describe('MapProxy', function () {
             beforeEach(function () {
                 return client.getMap('test').then(function (mp) {
                     map = mp;
-                    return _fillMap(map);
+                    return fillMap(map);
                 });
             });
 
@@ -78,11 +73,11 @@ describe('MapProxy', function () {
             });
 
             after(function () {
-                client.shutdown();
-                return Controller.terminateCluster(cluster.id);
+                return client.shutdown()
+                    .then(() => RC.terminateCluster(cluster.id));
             });
 
-            function _generateLockScript(mapName, keyName) {
+            function generateLockScript(mapName, keyName) {
                 return 'function lockByServer() {' +
                     '   var map = instance_0.getMap("' + mapName + '");' +
                     '   map.lock(' + keyName + ');' +
@@ -91,7 +86,7 @@ describe('MapProxy', function () {
                     'result=""+lockByServer();';
             }
 
-            function _generateUnlockScript(mapName, keyName) {
+            function generateUnlockScript(mapName, keyName) {
                 return 'function lockByServer() {' +
                     '   var map = instance_0.getMap("' + mapName + '");' +
                     '   map.unlock(' + keyName + ');' +
@@ -202,36 +197,43 @@ describe('MapProxy', function () {
                 });
             });
 
-            it('putAll', function (done) {
-                var arr = [
-                    ['pa_k0', 'pa_v0'],
-                    ['pa_k1', 'pa_v1'],
-                    ['pa_k2', 'pa_v2'],
-                    ['pa_k3', 'pa_v3'],
-                    ['pa_k4', 'pa_v4']
-                ];
-                var returnedCorrectly = 0;
-                var verify = function (expected) {
-                    return function (val) {
-                        try {
-                            expect(val).to.equal(expected);
-                            returnedCorrectly++;
-                            if (returnedCorrectly === 5) {
-                                done();
-
+            [true, false].forEach(function (shouldUsePutAll) {
+                it(shouldUsePutAll ? 'putAll' : 'setAll', function (done) {
+                    const arr = [
+                        ['pa_k0', 'pa_v0'],
+                        ['pa_k1', 'pa_v1'],
+                        ['pa_k2', 'pa_v2'],
+                        ['pa_k3', 'pa_v3'],
+                        ['pa_k4', 'pa_v4']
+                    ];
+                    let returnedCorrectly = 0;
+                    const verify = function (expected) {
+                        return function (val) {
+                            try {
+                                expect(val).to.equal(expected);
+                                returnedCorrectly++;
+                                if (returnedCorrectly === 5) {
+                                    done();
+                                }
+                            } catch (e) {
+                                done(e);
                             }
-                        } catch (e) {
-                            done(e);
-                        }
+                        };
                     };
-                };
-                map.putAll(arr).then(function () {
-                    map.get(arr[0][0]).then(verify(arr[0][1]));
-                    map.get(arr[1][0]).then(verify(arr[1][1]));
-                    map.get(arr[2][0]).then(verify(arr[2][1]));
-                    map.get(arr[3][0]).then(verify(arr[3][1]));
-                    map.get(arr[4][0]).then(verify(arr[4][1]));
-                })
+                    let promise;
+                    if (shouldUsePutAll) {
+                        promise = map.putAll(arr);
+                    } else {
+                        promise = map.setAll(arr);
+                    }
+                    promise.then(function () {
+                        map.get(arr[0][0]).then(verify(arr[0][1]));
+                        map.get(arr[1][0]).then(verify(arr[1][1]));
+                        map.get(arr[2][0]).then(verify(arr[2][1]));
+                        map.get(arr[3][0]).then(verify(arr[3][1]));
+                        map.get(arr[4][0]).then(verify(arr[4][1]));
+                    })
+                });
             });
 
             it('getAll', function () {
@@ -260,9 +262,8 @@ describe('MapProxy', function () {
             });
 
             it('entrySet_notNull', function () {
-                var entryMap;
-
-                var samples = [
+                let entryMap;
+                const samples = [
                     ['k1', 'v1'],
                     ['k2', 'v2'],
                     ['k3', 'v3']
@@ -283,7 +284,7 @@ describe('MapProxy', function () {
             });
 
             it('entrySet_null', function () {
-                var entryMap;
+                let entryMap;
                 return client.getMap('null-entry-map').then(function (mp) {
                     entryMap = mp;
                     return entryMap.entrySet();
@@ -317,14 +318,14 @@ describe('MapProxy', function () {
             });
 
             it('forceUnlock', function () {
-                var script =
+                const script =
                     'function lockByServer() {' +
                     '   var map = instance_0.getMap("' + map.getName() + '");' +
                     '   map.lock("key0");' +
                     '   return map.isLocked("key0")' +
                     '}' +
                     'result=""+lockByServer();';
-                return Controller.executeOnController(cluster.id, script, 1).then(function (s) {
+                return RC.executeOnController(cluster.id, script, 1).then(function (s) {
                     return map.forceUnlock('key0');
                 }).then(function () {
                     return map.isLocked('key0');
@@ -490,14 +491,15 @@ describe('MapProxy', function () {
             });
 
             it('addIndex', function () {
-                const orderedIndexCfg = new Config.IndexConfig();
-                orderedIndexCfg.name = 'length';
-                orderedIndexCfg.addAttribute('this');
-
-                const unorderedIndexCfg = new Config.IndexConfig();
-                unorderedIndexCfg.name = 'length';
-                unorderedIndexCfg.type = Config.IndexType.HASH;
-                unorderedIndexCfg.addAttribute('this');
+                const orderedIndexCfg = {
+                    name: 'length',
+                    attributes: ['this']
+                };
+                const unorderedIndexCfg = {
+                    name: 'length',
+                    type: 'HASH',
+                    attributes: ['this']
+                };
 
                 return Promise.all([
                     map.addIndex(orderedIndexCfg),
@@ -512,29 +514,35 @@ describe('MapProxy', function () {
             });
 
             it('tryLock_fail', function () {
-                return Controller.executeOnController(cluster.id, _generateLockScript(map.getName(), '"key0"'), 1).then(function (s) {
-                    return map.tryLock('key0');
-                }).then(function (success) {
-                    return expect(success).to.be.false;
-                });
+                return RC.executeOnController(cluster.id, generateLockScript(map.getName(), '"key0"'), 1)
+                    .then(function (s) {
+                        return map.tryLock('key0');
+                    })
+                    .then(function (success) {
+                        return expect(success).to.be.false;
+                    });
             });
 
             it('tryLock_success with timeout', function () {
-                return Controller.executeOnController(cluster.id, _generateLockScript(map.getName(), '"key0"'), 1).then(function () {
-                    var promise = map.tryLock('key0', 1000);
-                    Controller.executeOnController(cluster.id, _generateUnlockScript(map.getName(), '"key0"'), 1);
-                    return promise;
-                }).then(function (success) {
-                    return expect(success).to.be.true;
-                });
+                return RC.executeOnController(cluster.id, generateLockScript(map.getName(), '"key0"'), 1)
+                    .then(function () {
+                        const promise = map.tryLock('key0', 1000);
+                        RC.executeOnController(cluster.id, generateUnlockScript(map.getName(), '"key0"'), 1);
+                        return promise;
+                    })
+                    .then(function (success) {
+                        return expect(success).to.be.true;
+                    });
             });
 
             it('tryLock_fail with timeout', function () {
-                return Controller.executeOnController(cluster.id, _generateLockScript(map.getName(), '"key0"'), 1).then(function () {
-                    return map.tryLock('key0', 1000);
-                }).then(function (success) {
-                    return expect(success).to.be.false;
-                });
+                return RC.executeOnController(cluster.id, generateLockScript(map.getName(), '"key0"'), 1)
+                    .then(function () {
+                        return map.tryLock('key0', 1000);
+                    })
+                    .then(function (success) {
+                        return expect(success).to.be.false;
+                    });
             });
 
             it('tryPut success', function () {
@@ -544,29 +552,33 @@ describe('MapProxy', function () {
             });
 
             it('tryPut fail', function () {
-                return Controller.executeOnController(cluster.id, _generateLockScript(map.getName(), '"key0"'), 1).then(function () {
-                    return map.tryPut('key0', 'val0', 200);
-                }).then(function (success) {
-                    return expect(success).to.be.false;
-                })
+                return RC.executeOnController(cluster.id, generateLockScript(map.getName(), '"key0"'), 1)
+                    .then(function () {
+                        return map.tryPut('key0', 'val0', 200);
+                    })
+                    .then(function (success) {
+                        return expect(success).to.be.false;
+                    });
             });
 
             it('tryRemove success', function () {
                 return map.tryRemove('key0', 1000).then(function (success) {
                     return expect(success).to.be.true;
-                })
+                });
             });
 
             it('tryRemove fail', function () {
-                return Controller.executeOnController(cluster.id, _generateLockScript(map.getName(), '"key0"'), 1).then(function () {
-                    return map.tryRemove('key0', 200);
-                }).then(function (success) {
-                    return expect(success).to.be.false;
-                })
+                return RC.executeOnController(cluster.id, generateLockScript(map.getName(), '"key0"'), 1)
+                    .then(function () {
+                        return map.tryRemove('key0', 200);
+                    })
+                    .then(function (success) {
+                        return expect(success).to.be.false;
+                    });
             });
 
             it('addEntryListener on map, entryAdded fires because predicate returns true for that entry', function (done) {
-                var listenerObject = {
+                const listenerObject = {
                     added: function (entryEvent) {
                         try {
                             expect(entryEvent.name).to.equal('test');
@@ -581,13 +593,14 @@ describe('MapProxy', function () {
                         }
                     }
                 };
-                map.addEntryListenerWithPredicate(listenerObject, Predicates.sql('this == val10')).then(function () {
-                    map.put('key10', 'val10');
-                });
+                map.addEntryListenerWithPredicate(listenerObject, Predicates.sql('this == val10'))
+                    .then(function () {
+                        map.put('key10', 'val10');
+                    });
             });
 
             it('addEntryListener on key, entryAdded fires because predicate returns true for that entry', function (done) {
-                var listenerObject = {
+                const listenerObject = {
                     added: function (entryEvent) {
                         try {
                             expect(entryEvent.name).to.equal('test');
@@ -602,13 +615,14 @@ describe('MapProxy', function () {
                         }
                     }
                 };
-                map.addEntryListenerWithPredicate(listenerObject, Predicates.sql('this == val10'), 'key10').then(function () {
-                    map.put('key10', 'val10');
-                });
+                map.addEntryListenerWithPredicate(listenerObject, Predicates.sql('this == val10'), 'key10')
+                    .then(function () {
+                        map.put('key10', 'val10');
+                    });
             });
 
-            it('addEntryListener on key, entryAdded fires because predicate returns true for that entry, inlVal=yes', function (done) {
-                var listenerObject = {
+            it('addEntryListener on key, entryAdded fires because predicate returns true for that entry, inlVal=yes', (done) => {
+                const listenerObject = {
                     added: function (entryEvent) {
                         try {
                             expect(entryEvent.name).to.equal('test');
@@ -622,13 +636,14 @@ describe('MapProxy', function () {
                         }
                     }
                 };
-                map.addEntryListenerWithPredicate(listenerObject, Predicates.sql('this == val10'), 'key10', true).then(function () {
-                    map.put('key10', 'val10');
-                });
+                map.addEntryListenerWithPredicate(listenerObject, Predicates.sql('this == val10'), 'key10', true)
+                    .then(function () {
+                        map.put('key10', 'val10');
+                    });
             });
 
             it('addEntryListener with predicate on map entryAdded', function (done) {
-                var listenerObject = {
+                const listenerObject = {
                     added: function (entryEvent) {
                         try {
                             expect(entryEvent.name).to.equal('test');
@@ -643,13 +658,14 @@ describe('MapProxy', function () {
                         }
                     }
                 };
-                map.addEntryListenerWithPredicate(listenerObject, Predicates.sql('this == val10'), 'key10', true).then(function () {
-                    map.put('key10', 'val10');
-                });
+                map.addEntryListenerWithPredicate(listenerObject, Predicates.sql('this == val10'), 'key10', true)
+                    .then(function () {
+                        map.put('key10', 'val10');
+                    });
             });
 
             it('addEntryListener on map entryAdded', function (done) {
-                var listenerObject = {
+                const listenerObject = {
                     added: function (entryEvent) {
                         try {
                             expect(entryEvent.name).to.equal('test');
@@ -670,7 +686,7 @@ describe('MapProxy', function () {
             });
 
             it('addEntryListener on map entryUpdated', function (done) {
-                var listenerObject = {
+                const listenerObject = {
                     updated: function (entryEvent) {
                         try {
                             expect(entryEvent.name).to.equal('test');
@@ -691,7 +707,7 @@ describe('MapProxy', function () {
             });
 
             it('addEntryListener on key entryRemoved', function (done) {
-                var listenerObject = {
+                const listenerObject = {
                     removed: function (entryEvent) {
                         try {
                             expect(entryEvent.name).to.equal('test');
@@ -712,7 +728,7 @@ describe('MapProxy', function () {
             });
 
             it('addEntryListener on key entryRemoved includeValue=true', function (done) {
-                var listenerObject = {
+                const listenerObject = {
                     removed: function (entryEvent) {
                         try {
                             expect(entryEvent.name).to.equal('test');
@@ -733,7 +749,7 @@ describe('MapProxy', function () {
             });
 
             it('addEntryListener on key evicted includeValue=true', function (done) {
-                var listenerObject = {
+                const listenerObject = {
                     evicted: function (entryEvent) {
                         try {
                             expect(entryEvent.name).to.equal('test');
@@ -754,7 +770,7 @@ describe('MapProxy', function () {
             });
 
             it('addEntryListener on map evictAll', function (done) {
-                var listenerObject = {
+                const listenerObject = {
                     mapEvicted: function (mapEvent) {
                         try {
                             expect(mapEvent.name).to.equal('test');
@@ -772,7 +788,7 @@ describe('MapProxy', function () {
             });
 
             it('addEntryListener on map clearAll', function (done) {
-                var listenerObject = {
+                const listenerObject = {
                     mapCleared: function (mapEvent) {
                         try {
                             expect(mapEvent.name).to.equal('test');
@@ -790,7 +806,7 @@ describe('MapProxy', function () {
             });
 
             it('addEntryListener on map entryExpired includeValue=true', function (done) {
-                var listenerObj = {
+                const listenerObj = {
                   expired: function (entryEvent) {
                       try {
                           expect(entryEvent.name).to.equal('test');
@@ -805,7 +821,6 @@ describe('MapProxy', function () {
                       }
                   }
                 };
-
                 map.addEntryListener(listenerObj, undefined, true)
                     .then(function () {
                         return map.put('expiringKey', 'expiringValue', 1000);
@@ -855,29 +870,32 @@ describe('MapProxy', function () {
             });
 
             it('entrySetWithPredicate paging', function () {
-                return map.entrySetWithPredicate(Predicates.paging(Predicates.greaterEqual('this', 'val3'), 1)).then(function (entrySet) {
-                    expect(entrySet.length).to.equal(1);
-                    expect(entrySet[0]).to.deep.equal(['key3', 'val3']);
-                });
+                return map.entrySetWithPredicate(Predicates.paging(Predicates.greaterEqual('this', 'val3'), 1))
+                    .then(function (entrySet) {
+                        expect(entrySet.length).to.equal(1);
+                        expect(entrySet[0]).to.deep.equal(['key3', 'val3']);
+                    });
             });
 
             it('keySetWithPredicate paging', function () {
-                return map.keySetWithPredicate(Predicates.paging(Predicates.greaterEqual('this', 'val3'), 1)).then(function (keySet) {
-                    expect(keySet.length).to.equal(1);
-                    expect(keySet[0]).to.equal('key3');
-                });
+                return map.keySetWithPredicate(Predicates.paging(Predicates.greaterEqual('this', 'val3'), 1))
+                    .then(function (keySet) {
+                        expect(keySet.length).to.equal(1);
+                        expect(keySet[0]).to.equal('key3');
+                    });
             });
 
             it('valuesWithPredicate paging', function () {
-                return map.valuesWithPredicate(Predicates.paging(Predicates.greaterEqual('this', 'val3'), 1)).then(function (values) {
-                    expect(values.toArray().length).to.equal(1);
-                    expect(values.toArray()[0]).to.equal('val3');
-                });
+                return map.valuesWithPredicate(Predicates.paging(Predicates.greaterEqual('this', 'val3'), 1))
+                    .then(function (values) {
+                        expect(values.toArray().length).to.equal(1);
+                        expect(values.toArray()[0]).to.equal('val3');
+                    });
             });
 
             it('destroy', function () {
-                var dmap;
-                var newMap;
+                let dmap;
+                let newMap;
                 return client.getMap('map-to-be-destroyed').then(function (mp) {
                     dmap = mp;
                     return dmap.put('key', 'val');

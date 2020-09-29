@@ -13,40 +13,42 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+'use strict';
 
-var expect = require("chai").expect;
-var HazelcastClient = require("../../lib/index.js").Client;
-const Config = require("../../lib/index.js").Config;
-var Controller = require('./../RC');
-var fs = require('fs');
-var _fillMap = require('../Util').fillMap;
-var promiseWaitMilliseconds = require('../Util').promiseWaitMilliseconds;
+const expect = require('chai').expect;
+const fs = require('fs');
+const RC = require('./../RC');
+const { Client } = require('../../lib/index.js');
+const { fillMap } = require('../Util');
+const { promiseWaitMilliseconds } = require('../Util');
+const Util = require('../Util');
 
-describe('MapStore', function () {
-    var cluster;
-    var client;
-    var map;
+describe('MapStoreTest', function () {
+
+    let cluster;
+    let client;
+    let map;
 
     before(function () {
         this.timeout(32000);
-        return Controller.createCluster(null, fs.readFileSync(__dirname + '/hazelcast_mapstore.xml', 'utf8')).then(function (res) {
-            cluster = res;
-            return Controller.startMember(cluster.id);
-        }).then(function (member) {
-            const cfg = new Config.ClientConfig();
-            cfg.clusterName = cluster.id;
-            return HazelcastClient.newHazelcastClient(cfg).then(function (hazelcastClient) {
+        return RC.createCluster(null, fs.readFileSync(__dirname + '/hazelcast_mapstore.xml', 'utf8'))
+            .then(function (res) {
+                cluster = res;
+                return RC.startMember(cluster.id);
+            })
+            .then(function (member) {
+                return Client.newHazelcastClient({ clusterName: cluster.id });
+            })
+            .then(function (hazelcastClient) {
                 client = hazelcastClient;
             });
-        });
     });
 
     beforeEach(function () {
         return client.getMap('mapstore-test').then(function (mp) {
             map = mp;
-            return _fillMap(map);
+            return fillMap(map);
         });
-
     });
 
     afterEach(function () {
@@ -54,12 +56,12 @@ describe('MapStore', function () {
     });
 
     after(function () {
-        client.shutdown();
-        return Controller.terminateCluster(cluster.id);
+        return client.shutdown()
+            .then(() => RC.terminateCluster(cluster.id));
     });
 
     it('loadAll with no arguments loads all keys', function () {
-        return _fillMap(map).then(function () {
+        return fillMap(map).then(function () {
             return map.evictAll();
         }).then(function () {
             return map.loadAll();
@@ -174,7 +176,7 @@ describe('MapStore', function () {
     });
 
     it('addEntryListener on map entryLoaded includeValue=true', function (done) {
-        var listenerObj = {
+        const listener = {
             loaded: function (entryEvent) {
                 try {
                     expect(entryEvent.name).to.equal('mapstore-test');
@@ -190,13 +192,62 @@ describe('MapStore', function () {
             }
         };
 
-        map.addEntryListener(listenerObj, undefined, true)
+        map.addEntryListener(listener, undefined, true)
             .then(function () {
                 return map.put('some-key', 'some-value', 100)
             }).then(function () {
-                return promiseWaitMilliseconds(2000);
-            }).then(function () {
-                return map.get('some-key');
+            return promiseWaitMilliseconds(2000);
+        }).then(function () {
+            return map.get('some-key');
+        });
+    });
+
+    it('listener contains old value after putAll', function (done) {
+        let listenerId;
+        const listener = {
+            updated: event => {
+                map.removeEntryListener(listenerId)
+                    .then(() => {
+                        if (event.oldValue === '1') {
+                            done();
+                        } else {
+                            done(new Error('Old value for the received event does not match with expected value! ' +
+                                'Expected: 1, received: ' + event.oldValue));
+                        }
+                    });
+            },
+        }
+        map.evictAll()
+            .then(() => map.put('1', '1'))
+            .then(() => map.addEntryListener(listener, null, true))
+            .then(id => {
+                listenerId = id;
+                return map.putAll([['1', '2']]);
+            });
+    });
+
+    it('listener does not contain old value after setAll', function (done) {
+        Util.markServerVersionAtLeast(this, client, '4.1');
+        let listenerId;
+        const listener = {
+            added: event => {
+                map.removeEntryListener(listenerId)
+                    .then(() => {
+                        if (event.oldValue == null) {
+                            done();
+                        } else {
+                            done(new Error('Old value for the received event does not match with expected value! ' +
+                                'Expected: null, received: ' + event.oldValue));
+                        }
+                    });
+            },
+        }
+        map.evictAll()
+            .then(() => map.put('1', '1'))
+            .then(() => map.addEntryListener(listener, null, true))
+            .then(id => {
+                listenerId = id;
+                return map.setAll([['1', '2']]);
             });
     });
 });

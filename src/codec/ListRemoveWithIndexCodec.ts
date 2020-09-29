@@ -15,9 +15,9 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
+import {BitsUtil} from '../util/BitsUtil';
 import {FixSizedTypesCodec} from './builtin/FixSizedTypesCodec';
-import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import {StringCodec} from './builtin/StringCodec';
 import {Data} from '../serialization/Data';
 import {DataCodec} from './builtin/DataCodec';
@@ -31,10 +31,7 @@ const REQUEST_MESSAGE_TYPE = 332288;
 const REQUEST_INDEX_OFFSET = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 const REQUEST_INITIAL_FRAME_SIZE = REQUEST_INDEX_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
-export interface ListRemoveWithIndexResponseParams {
-    response: Data;
-}
-
+/** @internal */
 export class ListRemoveWithIndexCodec {
     static encodeRequest(name: string, index: number): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -50,12 +47,10 @@ export class ListRemoveWithIndexCodec {
         return clientMessage;
     }
 
-    static decodeResponse(clientMessage: ClientMessage): ListRemoveWithIndexResponseParams {
+    static decodeResponse(clientMessage: ClientMessage): Data {
         // empty initial frame
         clientMessage.nextFrame();
 
-        return {
-            response: CodecUtil.decodeNullable(clientMessage, DataCodec.decode),
-        };
+        return CodecUtil.decodeNullable(clientMessage, DataCodec.decode);
     }
 }

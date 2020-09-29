@@ -14,12 +14,13 @@
  * limitations under the License.
  */
 
-import {BEGIN_FRAME, ClientMessage, END_FRAME} from '../../ClientMessage';
+import {BEGIN_FRAME, ClientMessage, END_FRAME} from '../../protocol/ClientMessage';
 import {UUID} from '../../core/UUID';
 import {ListIntegerCodec} from './ListIntegerCodec';
 import {ListUUIDCodec} from './ListUUIDCodec';
 import {ListMultiFrameCodec} from './ListMultiFrameCodec';
 
+/** @internal */
 export class EntryListUUIDListIntegerCodec {
     static encode(clientMessage: ClientMessage, entries: Array<[UUID, number[]]>): void {
         const entryCount = entries.length;

@@ -16,7 +16,9 @@
 
 import * as Long from 'long';
 
+/** @internal */
 export interface Data {
+
     /**
      * Returns serialized representation in a buffer
      */
@@ -53,7 +55,7 @@ export interface Data {
     hasPartitionHash(): boolean;
 
     /**
-     * Returns hashcode for this data
+     * Returns hash code for this data
      */
     hashCode(): number;
 
@@ -66,7 +68,11 @@ export interface Data {
 
 }
 
+/**
+ * Output write helper for {@link IdentifiedDataSerializable} objects.
+ */
 export interface DataOutput {
+
     clear(): void;
 
     isBigEndian(): boolean;
@@ -83,9 +89,7 @@ export interface DataOutput {
 
     writeByte(byte: number): void;
 
-    writeByteArray(bytes: number[]): void;
-
-    writeBytes(bytes: string): void;
+    writeByteArray(bytes: Buffer): void;
 
     writeChar(char: string): void;
 
@@ -93,6 +97,7 @@ export interface DataOutput {
 
     writeChars(chars: string): void;
 
+    /** @internal */
     writeData(data: Data): void;
 
     writeDouble(double: number): void;
@@ -124,9 +129,12 @@ export interface DataOutput {
     writeUTFArray(val: string[]): void;
 
     writeZeroBytes(count: number): void;
+
 }
 
+/** @internal */
 export interface PositionalDataOutput extends DataOutput {
+
     pwrite(position: number, byte: number | Buffer): void;
 
     pwriteBoolean(position: number, val: boolean): void;
@@ -146,9 +154,14 @@ export interface PositionalDataOutput extends DataOutput {
     pwriteLong(position: number, long: Long): void;
 
     pwriteShort(position: number, short: number): void;
+
 }
 
+/**
+ * Input read helper for {@link IdentifiedDataSerializable} objects.
+ */
 export interface DataInput {
+
     isBigEndian(): boolean;
 
     position(newPosition?: number): number;
@@ -161,12 +174,13 @@ export interface DataInput {
 
     readByte(pos?: number): number;
 
-    readByteArray(pos?: number): number[];
+    readByteArray(pos?: number): Buffer;
 
     readChar(pos?: number): string;
 
     readCharArray(pos?: number): string[];
 
+    /** @internal */
     readData(pos?: number): Data;
 
     readDouble(pos?: number): number;
@@ -202,4 +216,7 @@ export interface DataInput {
     reset(): void;
 
     skipBytes(count: number): void;
+
+    available(): number;
+
 }

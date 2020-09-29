@@ -15,9 +15,9 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
+import {BitsUtil} from '../util/BitsUtil';
 import {FixSizedTypesCodec} from './builtin/FixSizedTypesCodec';
-import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import {UUID} from '../core/UUID';
 import {ListMultiFrameCodec} from './builtin/ListMultiFrameCodec';
 import {StringCodec} from './builtin/StringCodec';
@@ -34,11 +34,13 @@ const REQUEST_MESSAGE_TYPE = 81152;
 const REQUEST_UUID_OFFSET = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 const REQUEST_INITIAL_FRAME_SIZE = REQUEST_UUID_OFFSET + BitsUtil.UUID_SIZE_IN_BYTES;
 
+/** @internal */
 export interface MapFetchNearCacheInvalidationMetadataResponseParams {
     namePartitionSequenceList: Array<[string, Array<[number, Long]>]>;
     partitionUuidList: Array<[number, UUID]>;
 }
 
+/** @internal */
 export class MapFetchNearCacheInvalidationMetadataCodec {
     static encodeRequest(names: string[], uuid: UUID): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -58,9 +60,10 @@ export class MapFetchNearCacheInvalidationMetadataCodec {
         // empty initial frame
         clientMessage.nextFrame();
 
-        return {
-            namePartitionSequenceList: EntryListCodec.decode(clientMessage, StringCodec.decode, EntryListIntegerLongCodec.decode),
-            partitionUuidList: EntryListIntegerUUIDCodec.decode(clientMessage),
-        };
+        const response = {} as MapFetchNearCacheInvalidationMetadataResponseParams;
+        response.namePartitionSequenceList = EntryListCodec.decode(clientMessage, StringCodec.decode, EntryListIntegerLongCodec.decode);
+        response.partitionUuidList = EntryListIntegerUUIDCodec.decode(clientMessage);
+
+        return response;
     }
 }

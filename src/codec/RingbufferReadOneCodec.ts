@@ -15,9 +15,9 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
+import {BitsUtil} from '../util/BitsUtil';
 import {FixSizedTypesCodec} from './builtin/FixSizedTypesCodec';
-import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import * as Long from 'long';
 import {StringCodec} from './builtin/StringCodec';
 import {Data} from '../serialization/Data';
@@ -32,10 +32,7 @@ const REQUEST_MESSAGE_TYPE = 1509120;
 const REQUEST_SEQUENCE_OFFSET = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 const REQUEST_INITIAL_FRAME_SIZE = REQUEST_SEQUENCE_OFFSET + BitsUtil.LONG_SIZE_IN_BYTES;
 
-export interface RingbufferReadOneResponseParams {
-    response: Data;
-}
-
+/** @internal */
 export class RingbufferReadOneCodec {
     static encodeRequest(name: string, sequence: Long): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -51,12 +48,10 @@ export class RingbufferReadOneCodec {
         return clientMessage;
     }
 
-    static decodeResponse(clientMessage: ClientMessage): RingbufferReadOneResponseParams {
+    static decodeResponse(clientMessage: ClientMessage): Data {
         // empty initial frame
         clientMessage.nextFrame();
 
-        return {
-            response: CodecUtil.decodeNullable(clientMessage, DataCodec.decode),
-        };
+        return CodecUtil.decodeNullable(clientMessage, DataCodec.decode);
     }
 }

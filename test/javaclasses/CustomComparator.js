@@ -13,11 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+'use strict';
 
-var IterationType = require('../../lib/').IterationType;
+const IterationType = require('../../lib/').IterationType;
 
 /**
- *
  * @param type
  *          0 -> lexicographical order
  *          1 -> reverse lexicographical
@@ -27,15 +27,9 @@ var IterationType = require('../../lib/').IterationType;
 function CustomComparator(type, iterationType) {
     this.type = type;
     this.iterationType = iterationType;
+    this.factoryId = 66;
+    this.classId = 2;
 }
-
-CustomComparator.prototype.getFactoryId = function () {
-    return 66;
-};
-
-CustomComparator.prototype.getClassId = function () {
-    return 2;
-};
 
 CustomComparator.prototype.writeData = function (outp) {
     outp.writeInt(this.type);
@@ -48,8 +42,8 @@ CustomComparator.prototype.readData = function (inp) {
 };
 
 CustomComparator.prototype.sort = function (e1, e2) {
-    var str1;
-    var str2;
+    let str1;
+    let str2;
     switch (this.iterationType) {
         case IterationType.KEY:
             str1 = e1[0].toString();

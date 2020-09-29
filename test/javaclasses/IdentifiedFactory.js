@@ -13,25 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+'use strict';
 
-var IdentifiedEntryProcessor = require('./IdentifiedEntryProcessor');
-var DistortInvalidationMetadataEntryProcessor = require('./DistortInvalidationMetadataEntryProcessor');
-var CustomComparator = require('./CustomComparator');
-var PrefixFilter = require('./PrefixFilter');
+const IdentifiedEntryProcessor = require('./IdentifiedEntryProcessor');
+const DistortInvalidationMetadataEntryProcessor = require('./DistortInvalidationMetadataEntryProcessor');
+const CustomComparator = require('./CustomComparator');
+const PrefixFilter = require('./PrefixFilter');
 
-function IdentifiedFactory() {
-}
-
-IdentifiedFactory.prototype.create = function (type) {
-    if (type === 1) {
+function identifiedFactory(classId) {
+    if (classId === 1) {
         return new IdentifiedEntryProcessor();
-    } else if (type === 2) {
+    } else if (classId === 2) {
         return new CustomComparator();
-    } else if (type === 3) {
+    } else if (classId === 3) {
         return new DistortInvalidationMetadataEntryProcessor();
-    } else if (type === 4) {
+    } else if (classId === 4) {
         return new PrefixFilter();
     }
-};
+}
 
-module.exports = IdentifiedFactory;
+module.exports = identifiedFactory;

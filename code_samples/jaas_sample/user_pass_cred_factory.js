@@ -13,17 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+'use strict';
 
-var UsernamePasswordCredentials = require('./user_pass_cred');
+const UsernamePasswordCredentials = require('./user_pass_cred');
 
-function UsernamePasswordCredentialsFactory() {
-}
-
-UsernamePasswordCredentialsFactory.prototype.create = function (classId) {
-    if(classId === 1){
+function usernamePasswordCredentialsFactory(classId) {
+    if (classId === 1) {
         return new UsernamePasswordCredentials();
     }
     return null;
-};
+}
 
-exports.UsernamePasswordCredentialsFactory = UsernamePasswordCredentialsFactory;
+exports.usernamePasswordCredentialsFactory = usernamePasswordCredentialsFactory;

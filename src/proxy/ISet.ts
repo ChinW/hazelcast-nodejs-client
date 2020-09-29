@@ -14,10 +14,12 @@
  * limitations under the License.
  */
 
-import * as Promise from 'bluebird';
-import {ItemListener} from '../core/ItemListener';
-import {DistributedObject} from '../DistributedObject';
+import {ItemListener} from './ItemListener';
+import {DistributedObject} from '../core';
 
+/**
+ * Concurrent and distributed set.
+ */
 export interface ISet<E> extends DistributedObject {
     /**
      * Adds the specified element to this set if not already present.

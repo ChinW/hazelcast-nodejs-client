@@ -14,10 +14,12 @@
  * limitations under the License.
  */
 
-import * as Promise from 'bluebird';
-import {ItemListener} from '../core/ItemListener';
-import {DistributedObject} from '../DistributedObject';
+import {ItemListener} from './ItemListener';
+import {DistributedObject} from '../core';
 
+/**
+ * Concurrent, distributed, observable queue.
+ */
 export interface IQueue<E> extends DistributedObject {
     /**
      * Adds given item to the end of the queue. Operation is successful only

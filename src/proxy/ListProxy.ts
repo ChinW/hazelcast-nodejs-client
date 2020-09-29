@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
-import * as Promise from 'bluebird';
 import {ListAddAllCodec} from '../codec/ListAddAllCodec';
 import {ListAddAllWithIndexCodec} from '../codec/ListAddAllWithIndexCodec';
 import {ListAddCodec} from '../codec/ListAddCodec';
@@ -36,104 +36,78 @@ import {ListRemoveWithIndexCodec} from '../codec/ListRemoveWithIndexCodec';
 import {ListSetCodec} from '../codec/ListSetCodec';
 import {ListSizeCodec} from '../codec/ListSizeCodec';
 import {ListSubCodec} from '../codec/ListSubCodec';
-import {ItemEvent, ItemEventType, ItemListener} from '../core/ItemListener';
-import {ReadOnlyLazyList} from '../core/ReadOnlyLazyList';
-import {ListenerMessageCodec} from '../ListenerMessageCodec';
+import {ItemEvent, ItemEventType, ItemListener} from './ItemListener';
+import {ListenerMessageCodec} from '../listener/ListenerMessageCodec';
 import {Data} from '../serialization/Data';
 import {IList} from './IList';
 import {PartitionSpecificProxy} from './PartitionSpecificProxy';
-import {ClientMessage} from '../ClientMessage';
-import {UUID} from '../core/UUID';
+import {ClientMessage} from '../protocol/ClientMessage';
+import {
+    ReadOnlyLazyList,
+    UUID
+} from '../core';
 
+/** @internal */
 export class ListProxy<E> extends PartitionSpecificProxy implements IList<E> {
 
     add(element: E): Promise<boolean> {
         return this.encodeInvoke(ListAddCodec, this.toData(element))
-            .then((clientMessage) => {
-                const response = ListAddAllCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(ListAddAllCodec.decodeResponse);
     }
 
     addAll(elements: E[]): Promise<boolean> {
         return this.encodeInvoke(ListAddAllCodec, this.serializeList(elements))
-            .then((clientMessage) => {
-                const response = ListAddAllCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(ListAddAllCodec.decodeResponse);
     }
 
     addAllAt(index: number, elements: E[]): Promise<boolean> {
         return this.encodeInvoke(ListAddAllWithIndexCodec, index, this.serializeList(elements))
-            .then((clientMessage) => {
-                const response = ListAddAllWithIndexCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(ListAddAllWithIndexCodec.decodeResponse);
     }
 
     addAt(index: number, element: E): Promise<void> {
-        return this.encodeInvoke(ListAddWithIndexCodec, index, this.toData(element))
-            .then(() => undefined);
+        return this.encodeInvoke(ListAddWithIndexCodec, index, this.toData(element)).then();
     }
 
     clear(): Promise<void> {
-        return this.encodeInvoke(ListClearCodec)
-            .then(() => undefined);
+        return this.encodeInvoke(ListClearCodec).then();
     }
 
     contains(entry: E): Promise<boolean> {
         return this.encodeInvoke(ListContainsCodec, this.toData(entry))
-            .then((clientMessage) => {
-                const response = ListContainsCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(ListContainsCodec.decodeResponse);
     }
 
     containsAll(elements: E[]): Promise<boolean> {
         return this.encodeInvoke(ListContainsAllCodec, this.serializeList(elements))
-            .then((clientMessage) => {
-                const response = ListContainsAllCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(ListContainsAllCodec.decodeResponse);
     }
 
     isEmpty(): Promise<boolean> {
         return this.encodeInvoke(ListIsEmptyCodec)
-            .then((clientMessage) => {
-                const response = ListIsEmptyCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(ListIsEmptyCodec.decodeResponse);
     }
 
     remove(entry: E): Promise<boolean> {
         return this.encodeInvoke(ListRemoveCodec, this.toData(entry))
-            .then((clientMessage) => {
-                const response = ListRemoveCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(ListRemoveCodec.decodeResponse);
     }
 
     removeAll(elements: E[]): Promise<boolean> {
         return this.encodeInvoke(ListCompareAndRemoveAllCodec, this.serializeList(elements))
-            .then((clientMessage) => {
-                const response = ListCompareAndRemoveAllCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(ListCompareAndRemoveAllCodec.decodeResponse);
     }
 
     retainAll(elements: E[]): Promise<boolean> {
         return this.encodeInvoke(ListCompareAndRetainAllCodec, this.serializeList(elements))
-            .then((clientMessage) => {
-                const response = ListCompareAndRetainAllCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(ListCompareAndRetainAllCodec.decodeResponse);
     }
 
     removeAt(index: number): Promise<E> {
         return this.encodeInvoke(ListRemoveWithIndexCodec, index)
             .then((clientMessage) => {
                 const response = ListRemoveWithIndexCodec.decodeResponse(clientMessage);
-                return this.toObject(response.response);
+                return this.toObject(response);
             });
     }
 
@@ -141,7 +115,7 @@ export class ListProxy<E> extends PartitionSpecificProxy implements IList<E> {
         return this.encodeInvoke(ListGetCodec, index)
             .then((clientMessage) => {
                 const response = ListGetCodec.decodeResponse(clientMessage);
-                return this.toObject(response.response);
+                return this.toObject(response);
             });
     }
 
@@ -149,39 +123,30 @@ export class ListProxy<E> extends PartitionSpecificProxy implements IList<E> {
         return this.encodeInvoke(ListSetCodec, index, this.toData(element))
             .then((clientMessage) => {
                 const response = ListSetCodec.decodeResponse(clientMessage);
-                return this.toObject(response.response);
+                return this.toObject(response);
             });
     }
 
     indexOf(element: E): Promise<number> {
         return this.encodeInvoke(ListIndexOfCodec, this.toData(element))
-            .then((clientMessage) => {
-                const response = ListIndexOfCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(ListIndexOfCodec.decodeResponse);
     }
 
     lastIndexOf(element: E): Promise<number> {
         return this.encodeInvoke(ListLastIndexOfCodec, this.toData(element))
-            .then((clientMessage) => {
-                const response = ListLastIndexOfCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(ListLastIndexOfCodec.decodeResponse);
     }
 
     size(): Promise<number> {
         return this.encodeInvoke(ListSizeCodec)
-            .then((clientMessage) => {
-                const response = ListSizeCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(ListSizeCodec.decodeResponse);
     }
 
     subList(start: number, end: number): Promise<ReadOnlyLazyList<E>> {
         return this.encodeInvoke(ListSubCodec, start, end)
             .then((clientMessage) => {
                 const response = ListSubCodec.decodeResponse(clientMessage);
-                return new ReadOnlyLazyList<E>(response.response, this.client.getSerializationService());
+                return new ReadOnlyLazyList<E>(response, this.client.getSerializationService());
             });
     }
 
@@ -189,7 +154,7 @@ export class ListProxy<E> extends PartitionSpecificProxy implements IList<E> {
         return this.encodeInvoke(ListGetAllCodec)
             .then((clientMessage) => {
                 const response = ListGetAllCodec.decodeResponse(clientMessage);
-                return response.response.map<E>(this.toObject.bind(this));
+                return response.map<E>(this.toObject.bind(this));
             });
     }
 
@@ -229,7 +194,7 @@ export class ListProxy<E> extends PartitionSpecificProxy implements IList<E> {
                 return ListAddListenerCodec.encodeRequest(name, includeValue, localOnly);
             },
             decodeAddResponse(msg: ClientMessage): UUID {
-                return ListAddListenerCodec.decodeResponse(msg).response;
+                return ListAddListenerCodec.decodeResponse(msg);
             },
             encodeRemoveRequest(listenerId: UUID): ClientMessage {
                 return ListRemoveListenerCodec.encodeRequest(name, listenerId);

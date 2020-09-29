@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-import {BitsUtil} from '../../BitsUtil';
-import {ClientMessage, Frame} from '../../ClientMessage';
+import {BitsUtil} from '../../util/BitsUtil';
+import {ClientMessage, Frame} from '../../protocol/ClientMessage';
 import {FixSizedTypesCodec} from './FixSizedTypesCodec';
 import * as Long from 'long';
 
 const ENTRY_SIZE_IN_BYTES = BitsUtil.INT_SIZE_IN_BYTES + BitsUtil.LONG_SIZE_IN_BYTES;
 
+/** @internal */
 export class EntryListIntegerLongCodec {
     static encode(clientMessage: ClientMessage, entries: Array<[number, Long]>): void {
         const entryCount = entries.length;

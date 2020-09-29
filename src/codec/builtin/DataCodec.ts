@@ -14,11 +14,12 @@
  * limitations under the License.
  */
 
-import {ClientMessage, Frame, NULL_FRAME} from '../../ClientMessage';
+import {ClientMessage, Frame, NULL_FRAME} from '../../protocol/ClientMessage';
 import {Data} from '../../serialization/Data';
 import {HeapData} from '../../serialization/HeapData';
 import {CodecUtil} from './CodecUtil';
 
+/** @internal */
 export class DataCodec {
     static encode(clientMessage: ClientMessage, data: Data): void {
         clientMessage.addFrame(new Frame(data.toBuffer()));

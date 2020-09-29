@@ -15,8 +15,8 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
-import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {BitsUtil} from '../util/BitsUtil';
+import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 
 // hex: 0x000B00
 const REQUEST_MESSAGE_TYPE = 2816;
@@ -25,6 +25,7 @@ const REQUEST_MESSAGE_TYPE = 2816;
 
 const REQUEST_INITIAL_FRAME_SIZE = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
+/** @internal */
 export class ClientPingCodec {
     static encodeRequest(): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();

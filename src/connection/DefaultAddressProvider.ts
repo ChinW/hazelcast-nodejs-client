@@ -13,27 +13,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
 import {AddressProvider} from './AddressProvider';
-import {ClientNetworkConfig} from '../config/ClientNetworkConfig';
-import * as Promise from 'bluebird';
-import {Address} from '../Address';
+import {ClientNetworkConfigImpl} from '../config/ClientNetworkConfig';
+import {AddressImpl} from '../core/Address';
 
 /**
  * Default address provider of Hazelcast.
- *
  * Loads addresses from the Hazelcast configuration.
+ * @internal
  */
 export class DefaultAddressProvider implements AddressProvider {
 
-    private networkConfig: ClientNetworkConfig;
+    private networkConfig: ClientNetworkConfigImpl;
 
-    constructor(networkConfig: ClientNetworkConfig) {
+    constructor(networkConfig: ClientNetworkConfigImpl) {
         this.networkConfig = networkConfig;
     }
 
     loadAddresses(): Promise<string[]> {
-        const addresses: string[] = this.networkConfig.addresses;
+        const addresses: string[] = this.networkConfig.clusterMembers;
         if (addresses.length === 0) {
             addresses.push('localhost');
         }
@@ -41,7 +41,7 @@ export class DefaultAddressProvider implements AddressProvider {
         return Promise.resolve(addresses);
     }
 
-    translate(address: Address): Promise<Address> {
+    translate(address: AddressImpl): Promise<AddressImpl> {
         return Promise.resolve(address);
     }
 }

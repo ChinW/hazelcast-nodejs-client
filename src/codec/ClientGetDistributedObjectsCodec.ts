@@ -15,9 +15,9 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
-import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
-import {DistributedObjectInfo} from '../DistributedObjectInfo';
+import {BitsUtil} from '../util/BitsUtil';
+import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
+import {DistributedObjectInfo} from '../core/DistributedObjectInfo';
 import {ListMultiFrameCodec} from './builtin/ListMultiFrameCodec';
 import {DistributedObjectInfoCodec} from './custom/DistributedObjectInfoCodec';
 
@@ -28,10 +28,7 @@ const REQUEST_MESSAGE_TYPE = 2048;
 
 const REQUEST_INITIAL_FRAME_SIZE = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
-export interface ClientGetDistributedObjectsResponseParams {
-    response: DistributedObjectInfo[];
-}
-
+/** @internal */
 export class ClientGetDistributedObjectsCodec {
     static encodeRequest(): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -45,12 +42,10 @@ export class ClientGetDistributedObjectsCodec {
         return clientMessage;
     }
 
-    static decodeResponse(clientMessage: ClientMessage): ClientGetDistributedObjectsResponseParams {
+    static decodeResponse(clientMessage: ClientMessage): DistributedObjectInfo[] {
         // empty initial frame
         clientMessage.nextFrame();
 
-        return {
-            response: ListMultiFrameCodec.decode(clientMessage, DistributedObjectInfoCodec.decode),
-        };
+        return ListMultiFrameCodec.decode(clientMessage, DistributedObjectInfoCodec.decode);
     }
 }

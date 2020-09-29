@@ -13,46 +13,43 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+'use strict';
 
-var Controller = require('./RC');
-var expect = require('chai').expect;
-var HazelcastClient = require('../.').Client;
-var Config = require('../.').Config;
-var Util = require('./Util');
+const expect = require('chai').expect;
+const RC = require('./RC');
+const { Client } = require('../.');
+const Util = require('./Util');
 
-describe('Lost connection', function () {
-    var cluster;
-    var oldMember;
-    var client;
-    before(function () {
-        return Controller.createCluster(null, null).then(function (res) {
-            cluster = res;
-        }).then(function () {
-            return Controller.startMember(cluster.id);
-        }).then(function (m) {
-            oldMember = m;
-        }).then(function () {
-            var cfg = new Config.ClientConfig();
-            cfg.clusterName = cluster.id;
-            cfg.properties['hazelcast.client.heartbeat.interval'] = 500;
-            cfg.properties['hazelcast.client.heartbeat.timeout'] = 2000;
-            return HazelcastClient.newHazelcastClient(cfg);
-        }).then(function (cl) {
-            client = cl;
+describe('LostConnectionTest', function () {
+
+    let cluster;
+    let oldMember;
+    let client;
+
+    before(async function () {
+        cluster = await RC.createCluster(null, null);
+        oldMember = await RC.startMember(cluster.id);
+        client = await Client.newHazelcastClient({
+            clusterName: cluster.id,
+            properties: {
+                'hazelcast.client.heartbeat.interval': 500,
+                'hazelcast.client.heartbeat.timeout': 2000
+            }
         });
     });
 
-    after(function () {
-        client.shutdown();
-        return Controller.terminateCluster(cluster.id);
+    after(async function () {
+        await client.shutdown();
+        return RC.terminateCluster(cluster.id);
     });
 
     it('M2 starts, M1 goes down, client connects to M2', function (done) {
         this.timeout(32000);
-        var newMember;
-        var membershipListener = {
-            memberAdded: function (membershipEvent) {
-                Controller.shutdownMember(cluster.id, oldMember.uuid).then(function () {
+
+        let newMember;
+        const membershipListener = {
+            memberAdded: () => {
+                RC.shutdownMember(cluster.id, oldMember.uuid).then(function () {
                     return Util.promiseWaitMilliseconds(4000);
                 }).then(function () {
                     try {
@@ -68,8 +65,10 @@ describe('Lost connection', function () {
         };
 
         client.clusterService.addMembershipListener(membershipListener);
-        Controller.startMember(cluster.id).then(function (m) {
-            newMember = m;
-        });
+        RC.startMember(cluster.id)
+            .then((m) => {
+                newMember = m;
+            })
+            .catch(done);
     });
 });

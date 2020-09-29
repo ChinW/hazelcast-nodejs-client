@@ -13,25 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+'use strict';
 
-var expect = require('chai').expect;
-var LazyReadResultSet = require('../../lib/proxy/ringbuffer/LazyReadResultSet').LazyReadResultSet;
-var HzErrors = require('../..').HazelcastErrors;
+const expect = require('chai').expect;
+const { LazyReadResultSet } = require('../../lib/proxy/ringbuffer/LazyReadResultSet');
 
 describe('LazyReadResultSetTest', function () {
 
-    var mockSerializationService = {
-        'toObject': function (x) {
-            return x + 100;
-        },
-
-        'isData': function (x) {
-            return x < 3;
-        }
+    const mockSerializationService = {
+        toObject: (x) => x + 100,
+        isData: (x) => x < 3
     };
 
     it('get', function () {
-        var set = new LazyReadResultSet(mockSerializationService, 4, [1, 2, 3, 4], [11, 12, 13, 14]);
+        const set = new LazyReadResultSet(mockSerializationService, 4, [1, 2, 3, 4], [11, 12, 13, 14], 15);
         expect(set.get(0)).to.equal(101);
         expect(set.get(1)).to.equal(102);
         expect(set.get(2)).to.equal(3);
@@ -41,15 +36,11 @@ describe('LazyReadResultSetTest', function () {
         expect(set.getSequence(2)).to.equal(13);
         expect(set.getSequence(3)).to.equal(14);
         expect(set.getReadCount()).to.equal(4);
-    });
-
-    it('getSequence throws UnsupportedOperationError when there is no info', function () {
-        var set = new LazyReadResultSet(mockSerializationService, 4, [1, 2, 3, 4]);
-        expect(set.getSequence.bind(set, 2)).to.throw(HzErrors.UnsupportedOperationError);
+        expect(set.getNextSequenceToReadFrom()).to.equal(15);
     });
 
     it('get returns undefined for out of range index', function () {
-        var set = new LazyReadResultSet(mockSerializationService, 4, [1, 2, 3, 4], [11, 12, 13, 14]);
+        const set = new LazyReadResultSet(mockSerializationService, 4, [1, 2, 3, 4], [11, 12, 13, 14], 15);
         expect(set.get(4)).to.be.undefined;
     });
 });

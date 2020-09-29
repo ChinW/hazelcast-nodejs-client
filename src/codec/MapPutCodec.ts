@@ -15,9 +15,9 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
+import {BitsUtil} from '../util/BitsUtil';
 import {FixSizedTypesCodec} from './builtin/FixSizedTypesCodec';
-import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import * as Long from 'long';
 import {StringCodec} from './builtin/StringCodec';
 import {Data} from '../serialization/Data';
@@ -33,10 +33,7 @@ const REQUEST_THREAD_ID_OFFSET = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTE
 const REQUEST_TTL_OFFSET = REQUEST_THREAD_ID_OFFSET + BitsUtil.LONG_SIZE_IN_BYTES;
 const REQUEST_INITIAL_FRAME_SIZE = REQUEST_TTL_OFFSET + BitsUtil.LONG_SIZE_IN_BYTES;
 
-export interface MapPutResponseParams {
-    response: Data;
-}
-
+/** @internal */
 export class MapPutCodec {
     static encodeRequest(name: string, key: Data, value: Data, threadId: Long, ttl: Long): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -55,12 +52,10 @@ export class MapPutCodec {
         return clientMessage;
     }
 
-    static decodeResponse(clientMessage: ClientMessage): MapPutResponseParams {
+    static decodeResponse(clientMessage: ClientMessage): Data {
         // empty initial frame
         clientMessage.nextFrame();
 
-        return {
-            response: CodecUtil.decodeNullable(clientMessage, DataCodec.decode),
-        };
+        return CodecUtil.decodeNullable(clientMessage, DataCodec.decode);
     }
 }

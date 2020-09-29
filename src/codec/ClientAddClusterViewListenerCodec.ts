@@ -15,9 +15,9 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
+import {BitsUtil} from '../util/BitsUtil';
 import {FixSizedTypesCodec} from './builtin/FixSizedTypesCodec';
-import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import {MemberInfo} from '../core/MemberInfo';
 import {ListMultiFrameCodec} from './builtin/ListMultiFrameCodec';
 import {MemberInfoCodec} from './custom/MemberInfoCodec';
@@ -37,6 +37,7 @@ const REQUEST_INITIAL_FRAME_SIZE = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BY
 const EVENT_MEMBERS_VIEW_VERSION_OFFSET = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 const EVENT_PARTITIONS_VIEW_VERSION_OFFSET = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
+/** @internal */
 export class ClientAddClusterViewListenerCodec {
     static encodeRequest(): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();

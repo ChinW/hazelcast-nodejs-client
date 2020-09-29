@@ -16,17 +16,18 @@
 
 /* eslint-disable max-len */
 import {FixSizedTypesCodec} from '../builtin/FixSizedTypesCodec';
-import {BitsUtil} from '../../BitsUtil';
-import {ClientMessage, BEGIN_FRAME, END_FRAME, Frame, DEFAULT_FLAGS} from '../../ClientMessage';
+import {BitsUtil} from '../../util/BitsUtil';
+import {ClientMessage, BEGIN_FRAME, END_FRAME, Frame, DEFAULT_FLAGS} from '../../protocol/ClientMessage';
 import {CodecUtil} from '../builtin/CodecUtil';
+import {AddressImpl} from '../../core/Address';
 import {StringCodec} from '../builtin/StringCodec';
-import {Address} from '../../Address';
 
 const PORT_OFFSET = 0;
 const INITIAL_FRAME_SIZE = PORT_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
+/** @internal */
 export class AddressCodec {
-    static encode(clientMessage: ClientMessage, address: Address): void {
+    static encode(clientMessage: ClientMessage, address: AddressImpl): void {
         clientMessage.addFrame(BEGIN_FRAME.copy());
 
         const initialFrame = Frame.createInitialFrame(INITIAL_FRAME_SIZE, DEFAULT_FLAGS);
@@ -38,16 +39,17 @@ export class AddressCodec {
         clientMessage.addFrame(END_FRAME.copy());
     }
 
-    static decode(clientMessage: ClientMessage): Address {
+    static decode(clientMessage: ClientMessage): AddressImpl {
         // begin frame
         clientMessage.nextFrame();
 
         const initialFrame = clientMessage.nextFrame();
-        const port: number = FixSizedTypesCodec.decodeInt(initialFrame.content, PORT_OFFSET);
-        const host: string = StringCodec.decode(clientMessage);
+        const port = FixSizedTypesCodec.decodeInt(initialFrame.content, PORT_OFFSET);
+
+        const host = StringCodec.decode(clientMessage);
 
         CodecUtil.fastForwardToEndFrame(clientMessage);
 
-        return new Address(host, port);
+        return new AddressImpl(host, port);
     }
 }

@@ -13,39 +13,40 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+'use strict';
 
-var chai = require('chai');
+const chai = require('chai');
 chai.use(require('chai-as-promised'));
-var expect = chai.expect;
-var Controller = require('../RC');
-var Client = require('../..').Client;
-const Config = require('../..').Config;
-var Errors = require('../..').HazelcastErrors;
-var fs = require('fs');
-var path = require('path');
+const expect = chai.expect;
+const fs = require('fs');
+const path = require('path');
+
+const RC = require('../RC');
+const { Client, NoDataMemberInClusterError } = require('../..');
 
 describe('PNCounterWithLiteMembersTest', function () {
 
-    var cluster;
-    var client;
-    var pncounter;
+    let cluster;
+    let client;
+    let pncounter;
 
     before(function () {
-        return Controller.createCluster(null, fs.readFileSync(path.resolve(__dirname, 'hazelcast_litemember.xml'), 'utf8')).then(function (cl) {
-            cluster = cl;
-            return Controller.startMember(cluster.id);
-        }).then(function () {
-            const cfg = new Config.ClientConfig();
-            cfg.clusterName = cluster.id;
-            return Client.newHazelcastClient(cfg);
-        }).then(function (cl) {
-            client = cl;
-        });
+        return RC.createCluster(null, fs.readFileSync(path.resolve(__dirname, 'hazelcast_litemember.xml'), 'utf8'))
+            .then(function (cl) {
+                cluster = cl;
+                return RC.startMember(cluster.id);
+            })
+            .then(function () {
+                return Client.newHazelcastClient({ clusterName: cluster.id });
+            })
+            .then(function (cl) {
+                client = cl;
+            });
     });
 
     after(function () {
-        client.shutdown();
-        return Controller.terminateCluster(cluster.id);
+        return client.shutdown()
+            .then(() => RC.terminateCluster(cluster.id));
     });
 
     beforeEach(function () {
@@ -59,38 +60,38 @@ describe('PNCounterWithLiteMembersTest', function () {
     });
 
     it('get throws NoDataMemberInClusterError', function () {
-        return expect(pncounter.get()).to.be.rejectedWith(Errors.NoDataMemberInClusterError);
+        return expect(pncounter.get()).to.be.rejectedWith(NoDataMemberInClusterError);
     });
 
     it('getAndAdd throws NoDataMemberInClusterError', function () {
-        return expect(pncounter.getAndAdd(1)).to.be.rejectedWith(Errors.NoDataMemberInClusterError);
+        return expect(pncounter.getAndAdd(1)).to.be.rejectedWith(NoDataMemberInClusterError);
     });
 
     it('addAndGet throws NoDataMemberInClusterError', function () {
-        return expect(pncounter.addAndGet(1)).to.be.rejectedWith(Errors.NoDataMemberInClusterError);
+        return expect(pncounter.addAndGet(1)).to.be.rejectedWith(NoDataMemberInClusterError);
     });
 
     it('getAndSubtract throws NoDataMemberInClusterError', function () {
-        return expect(pncounter.getAndSubtract(1)).to.be.rejectedWith(Errors.NoDataMemberInClusterError);
+        return expect(pncounter.getAndSubtract(1)).to.be.rejectedWith(NoDataMemberInClusterError);
     });
 
     it('subtractAndGet throws NoDataMemberInClusterError', function () {
-        return expect(pncounter.subtractAndGet(1)).to.be.rejectedWith(Errors.NoDataMemberInClusterError);
+        return expect(pncounter.subtractAndGet(1)).to.be.rejectedWith(NoDataMemberInClusterError);
     });
 
     it('getAndDecrement throws NoDataMemberInClusterError', function () {
-        return expect(pncounter.getAndDecrement()).to.be.rejectedWith(Errors.NoDataMemberInClusterError);
+        return expect(pncounter.getAndDecrement()).to.be.rejectedWith(NoDataMemberInClusterError);
     });
 
     it('decrementAndGet throws NoDataMemberInClusterError', function () {
-        return expect(pncounter.decrementAndGet()).to.be.rejectedWith(Errors.NoDataMemberInClusterError);
+        return expect(pncounter.decrementAndGet()).to.be.rejectedWith(NoDataMemberInClusterError);
     });
 
     it('incrementAndGet throws NoDataMemberInClusterError', function () {
-        return expect(pncounter.incrementAndGet()).to.be.rejectedWith(Errors.NoDataMemberInClusterError);
+        return expect(pncounter.incrementAndGet()).to.be.rejectedWith(NoDataMemberInClusterError);
     });
 
     it('getAndIncrement throws NoDataMemberInClusterError', function () {
-        return expect(pncounter.getAndIncrement()).to.be.rejectedWith(Errors.NoDataMemberInClusterError);
+        return expect(pncounter.getAndIncrement()).to.be.rejectedWith(NoDataMemberInClusterError);
     });
 });

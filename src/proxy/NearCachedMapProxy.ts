@@ -13,21 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
-import * as Promise from 'bluebird';
+import * as Long from 'long';
 import {MapAddNearCacheInvalidationListenerCodec} from '../codec/MapAddNearCacheInvalidationListenerCodec';
 import {MapRemoveEntryListenerCodec} from '../codec/MapRemoveEntryListenerCodec';
-import {EventType} from '../core/EventType';
+import {EventType} from './EventType';
 import {UUID} from '../core/UUID';
-import HazelcastClient from '../HazelcastClient';
-import {ListenerMessageCodec} from '../ListenerMessageCodec';
+import {HazelcastClient} from '../HazelcastClient';
+import {PartitionServiceImpl} from '../PartitionService';
+import {ListenerMessageCodec} from '../listener/ListenerMessageCodec';
 import {NearCache} from '../nearcache/NearCache';
-import {StaleReadDetectorImpl} from '../nearcache/StaleReadDetectorImpl';
+import {StaleReadDetectorImpl} from '../nearcache/StaleReadDetector';
 import {Data} from '../serialization/Data';
 import {MapProxy} from './MapProxy';
-import {ClientMessage} from '../ClientMessage';
-import * as Long from 'long';
+import {ClientMessage, ClientMessageHandler} from '../protocol/ClientMessage';
 
+/** @internal */
 export class NearCachedMapProxy<K, V> extends MapProxy<K, V> {
 
     private nearCache: NearCache;
@@ -75,14 +77,12 @@ export class NearCachedMapProxy<K, V> extends MapProxy<K, V> {
         return super.evictInternal(key).then<boolean>(this.invalidateCacheEntryAndReturn.bind(this, key));
     }
 
-    protected putAllInternal(partitionsToKeysData: { [id: string]: Array<[Data, Data]> }): Promise<void> {
-        return super.putAllInternal(partitionsToKeysData).then(() => {
-            for (const partition in partitionsToKeysData) {
-                partitionsToKeysData[partition].forEach((entry: [Data, Data]) => {
-                    this.nearCache.invalidate(entry[0]);
-                });
-            }
-        });
+    protected finalizePutAll(partitionsToKeysData: { [id: string]: Array<[Data, Data]> }): void {
+        for (const partition in partitionsToKeysData) {
+            partitionsToKeysData[partition].forEach((entry: [Data, Data]) => {
+                this.nearCache.invalidate(entry[0]);
+            });
+        }
     }
 
     protected postDestroy(): Promise<void> {
@@ -219,7 +219,7 @@ export class NearCachedMapProxy<K, V> extends MapProxy<K, V> {
 
             },
             decodeAddResponse(msg: ClientMessage): UUID {
-                return MapAddNearCacheInvalidationListenerCodec.decodeResponse(msg).response;
+                return MapAddNearCacheInvalidationListenerCodec.decodeResponse(msg);
             },
             encodeRemoveRequest(listenerId: UUID): ClientMessage {
                 return MapRemoveEntryListenerCodec.encodeRequest(name, listenerId);
@@ -227,10 +227,11 @@ export class NearCachedMapProxy<K, V> extends MapProxy<K, V> {
         };
     }
 
-    private createNearCacheEventHandler(): Promise<Function> {
+    private createNearCacheEventHandler(): Promise<ClientMessageHandler> {
         const repairingTask = this.client.getRepairingTask();
         return repairingTask.registerAndGetHandler(this.getName(), this.nearCache).then((repairingHandler) => {
-            const staleReadDetector = new StaleReadDetectorImpl(repairingHandler, this.client.getPartitionService());
+            const staleReadDetector = new StaleReadDetectorImpl(
+                repairingHandler, this.client.getPartitionService() as PartitionServiceImpl);
             this.nearCache.setStaleReadDetector(staleReadDetector);
             const handle = function (key: Data, sourceUuid: UUID, partitionUuid: UUID, sequence: Long): void {
                 repairingHandler.handle(key, sourceUuid, partitionUuid, sequence);

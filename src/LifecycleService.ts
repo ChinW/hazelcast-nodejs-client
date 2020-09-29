@@ -15,15 +15,14 @@
  */
 
 import {EventEmitter} from 'events';
-import {ListenerImportConfig} from './config/ImportConfig';
-import HazelcastClient from './HazelcastClient';
-import * as Util from './Util';
+import {HazelcastClient} from './HazelcastClient';
 import {ILogger} from './logging/ILogger';
 
 /**
  * Lifecycle states.
  */
 export enum LifecycleState {
+
     /**
      * Fired when the client is starting.
      */
@@ -58,14 +57,28 @@ export enum LifecycleState {
      * Fired when the client is connected to a new cluster.
      */
     CHANGED_CLUSTER = 'CHANGED_CLUSTER',
+
 }
 
 const LIFECYCLE_EVENT_NAME = 'lifecycleEvent';
 
 /**
- * LifecycleService
+ * Lifecycle service for Hazelcast clients. Allows to determine lifecycle
+ * state of the client and shut it down.
  */
-export class LifecycleService extends EventEmitter {
+export interface LifecycleService {
+
+    /**
+     * Returns the active state of the client.
+     * @returns {boolean}
+     */
+    isRunning(): boolean;
+
+}
+
+/** @internal */
+export class LifecycleServiceImpl extends EventEmitter implements LifecycleService {
+
     private active: boolean;
     private client: HazelcastClient;
     private logger: ILogger;
@@ -75,18 +88,9 @@ export class LifecycleService extends EventEmitter {
         this.setMaxListeners(0);
         this.client = client;
         this.logger = this.client.getLoggingService().getLogger();
-        const listeners = client.getConfig().listeners.lifecycleListeners;
+        const listeners = client.getConfig().lifecycleListeners;
         listeners.forEach((listener) => {
             this.on(LIFECYCLE_EVENT_NAME, listener);
-        });
-        const listenerConfigs = client.getConfig().listenerConfigs;
-        listenerConfigs.forEach((config: ListenerImportConfig) => {
-            if (config.type === 'lifecycle') {
-                const path = config.importConfig.path;
-                const exportedName = config.importConfig.exportedName;
-                const listener = Util.loadNameFromPath(path, exportedName);
-                this.on(LIFECYCLE_EVENT_NAME, listener);
-            }
         });
     }
 
@@ -107,20 +111,20 @@ export class LifecycleService extends EventEmitter {
         return this.active;
     }
 
-    public start(): void {
+    start(): void {
         this.emitLifecycleEvent(LifecycleState.STARTING);
         this.active = true;
         this.emitLifecycleEvent(LifecycleState.STARTED);
     }
 
-    public shutdown(): void {
+    shutdown(): Promise<void> {
         if (!this.active) {
             return;
         }
         this.active = false;
 
         this.emitLifecycleEvent(LifecycleState.SHUTTING_DOWN);
-        this.client.doShutdown();
-        this.emitLifecycleEvent(LifecycleState.SHUTDOWN);
+        return this.client.doShutdown()
+            .then(() => this.emitLifecycleEvent(LifecycleState.SHUTDOWN));
     }
 }

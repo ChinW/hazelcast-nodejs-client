@@ -16,14 +16,13 @@
 
 'use strict';
 
-const expect = require('chai').expect;
-const HazelcastClient = require('../../lib').Client;
-const Config = require('../../lib').Config;
-const Controller = require('../RC');
+const { expect } = require('chai');
 const fs = require('fs');
 const http = require('http');
 const querystring = require('querystring');
-const DeferredPromise = require('../../lib/Util').DeferredPromise;
+const RC = require('../RC');
+const Client = require('../../lib').Client;
+const { deferredPromise } = require('../../lib/util/Util');
 
 describe('RestValueTest', function () {
 
@@ -33,23 +32,21 @@ describe('RestValueTest', function () {
 
     before(function () {
         this.timeout(32000);
-        return Controller.createCluster(null, fs.readFileSync(__dirname + '/hazelcast_rest.xml', 'utf8'))
+        return RC.createCluster(null, fs.readFileSync(__dirname + '/hazelcast_rest.xml', 'utf8'))
             .then(c => {
                 cluster = c;
-                return Controller.startMember(cluster.id);
+                return RC.startMember(cluster.id);
             }).then(m => {
                 member = m;
-                const config = new Config.ClientConfig();
-                config.clusterName = cluster.id;
-                return HazelcastClient.newHazelcastClient(config);
+                return Client.newHazelcastClient({ clusterName: cluster.id });
             }).then(c => {
                 client = c;
             });
     });
 
     after(function () {
-        client.shutdown();
-        return Controller.terminateCluster(cluster.id);
+        return client.shutdown()
+            .then(() => RC.terminateCluster(cluster.id));
     });
 
     it('client should receive REST events from server as RestValue', function (done) {
@@ -72,7 +69,7 @@ describe('RestValueTest', function () {
                 return queue.addItemListener(itemListener, true);
             })
             .then(() => {
-                const deferred = DeferredPromise();
+                const deferred = deferredPromise();
 
                 const options = {
                     hostname: member.host,

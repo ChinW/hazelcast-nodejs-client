@@ -19,12 +19,11 @@
 const chai = require('chai');
 const chaiAsPromised = require('chai-as-promised');
 chai.use(chaiAsPromised);
+const { expect } = require('chai');
 
-const expect = require('chai').expect;
-const Client = require('../../.').Client;
-const Config = require('../../.').Config;
-const Controller = require('../RC');
-const Util = require('../../lib/Util');
+const RC = require('../RC');
+const { Client } = require('../../.');
+const { deferredPromise } = require('../../lib/util/Util');
 
 describe('InitialMembershipListenerTest', function () {
 
@@ -34,49 +33,43 @@ describe('InitialMembershipListenerTest', function () {
     let initialMember;
     let client;
 
-    beforeEach(function () {
-       return Controller.createCluster(null, null)
-           .then((c) => {
-               cluster = c;
-               return Controller.startMember(cluster.id);
-           })
-           .then((m) => {
-               initialMember = m;
-           })
+    beforeEach(async function () {
+       cluster = await RC.createCluster(null, null);
+       initialMember = await RC.startMember(cluster.id);
     });
 
-    afterEach(function () {
+    afterEach(async function () {
         if (client != null) {
-            client.shutdown();
+            await client.shutdown();
         }
-
-        return Controller.terminateCluster(cluster.id);
+        return RC.terminateCluster(cluster.id);
     });
 
-    it('receives available member when added before client start', function (done) {
-        const config = new Config.ClientConfig();
-        const membershipListener = {
-            init: (event) => {
-                const members = event.members;
-                expect(members).to.have.lengthOf(1);
-                const member = members[0];
-                expect(member.address.host).to.equal(initialMember.host);
-                expect(member.address.port).to.equal(initialMember.port);
-                done();
-            }
+    it('should receive available member when added before client start', function (done) {
+        const config = {
+            clusterName: cluster.id,
+            membershipListeners: [
+                {
+                    init: (event) => {
+                        const members = event.members;
+                        expect(members).to.have.lengthOf(1);
+                        const member = members[0];
+                        expect(member.address.host).to.equal(initialMember.host);
+                        expect(member.address.port).to.equal(initialMember.port);
+                        done();
+                    }
+                }
+            ]
         };
-
-        config.clusterName = cluster.id;
-        config.listeners.addMembershipListener(membershipListener);
 
         Client.newHazelcastClient(config)
             .then((c) => {
                 client = c;
             })
+            .catch(done);
     });
 
-    it('receives available member when added after client start', function (done) {
-        const config = new Config.ClientConfig();
+    it('should receive available member when added after client start', function (done) {
         const membershipListener = {
             init: (event) => {
                 const members = event.members;
@@ -88,20 +81,18 @@ describe('InitialMembershipListenerTest', function () {
             }
         };
 
-        config.clusterName = cluster.id;
-        Client.newHazelcastClient(config)
+        Client.newHazelcastClient({ clusterName: cluster.id })
             .then((c) => {
                 client = c;
-
                 client.getClusterService().addMembershipListener(membershipListener);
-            });
+            })
+            .catch(done);
     });
 
-    it('receives events after initial event', function (done) {
+    it('should receive events after initial event', function (done) {
         let newMember;
-        let newMemberResolved = Util.DeferredPromise();
+        const newMemberResolved = deferredPromise();
 
-        const config = new Config.ClientConfig();
         const membershipListener = {
             init: (event) => {
                 const members = event.members;
@@ -123,23 +114,20 @@ describe('InitialMembershipListenerTest', function () {
                     });
             }
         };
-
-        config.clusterName = cluster.id;
-        config.listeners.addMembershipListener(membershipListener);
+        const config = {
+            clusterName: cluster.id,
+            membershipListeners: [membershipListener]
+        };
 
         Client.newHazelcastClient(config)
             .then((c) => {
                 client = c;
-
-                return Controller.startMember(cluster.id);
+                return RC.startMember(cluster.id);
             })
             .then((m) => {
                 newMember = m;
                 newMemberResolved.resolve();
             })
-            .catch((e) => {
-                done(e);
-            });
+            .catch(done);
     });
-
 });

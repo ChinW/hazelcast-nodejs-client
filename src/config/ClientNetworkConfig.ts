@@ -14,42 +14,65 @@
  * limitations under the License.
  */
 
-import {ClientCloudConfig} from './ClientCloudConfig';
-import {SSLConfig} from './SSLConfig';
+import {ClientCloudConfig, ClientCloudConfigImpl} from './ClientCloudConfig';
+import {SSLConfig, SSLConfigImpl} from './SSLConfig';
 
 /**
  * Network configuration.
  */
-export class ClientNetworkConfig {
-    /**
-     * Array of candidate addresses that client will use to establish initial connection.
-     */
-    addresses: string[] = [];
+export interface ClientNetworkConfig {
 
     /**
-     * hazelcast.cloud configuration to let the client connect the cluster via hazelcast.cloud
+     * Array of member candidate addresses that client will use to establish initial connection.
+     * By default, set to `['127.0.0.1']`.
      */
-    cloudConfig: ClientCloudConfig = new ClientCloudConfig();
+    clusterMembers?: string[];
 
     /**
-     * Timeout value in millis for nodes to accept client connection requests.
+     * Hazelcast Cloud configuration to let the client connect the cluster in cloud.
      */
-    connectionTimeout = 5000;
+    hazelcastCloud?: ClientCloudConfig;
 
     /**
-     * true if redo operations are enabled (not implemented yet)
+     * Timeout value in milliseconds for nodes to accept client connection requests.
+     * By default, set to `5000`.
      */
-    redoOperation = false;
+    connectionTimeout: number;
 
     /**
-     * If true, client will behave as smart client instead of dummy client. Smart client sends key based operations
-     * to owner of the keys. Dummy client sends all operations to a single node. See http://docs.hazelcast.org to
-     * learn about smart/dummy client.
+     * When set to `true`, the client will redo the operations that were executing on
+     * the server in case if the client lost connection. This can happen because of
+     * network problems, or simply because the member died. However it is not clear
+     * whether the operation was performed or not. For idempotent operations this is
+     * harmless, but for non idempotent ones retrying can cause to undesirable effects.
+     * Note that the redo can be processed on any member.
+     *
+     * By default, set to `false`.
      */
-    smartRouting = true;
+    redoOperation?: boolean;
+
+    /**
+     * Enables smart mode for the client instead of unisocket client. Smart clients
+     * send key based operations to owner of the keys. Unisocket clients send all
+     * operations to a single node. By default, set to `true`.
+     */
+    smartRouting?: boolean;
 
     /**
      * SSL configuration.
      */
-    sslConfig: SSLConfig = new SSLConfig();
+    ssl?: SSLConfig;
+
+}
+
+/** @internal */
+export class ClientNetworkConfigImpl implements ClientNetworkConfig {
+
+    clusterMembers: string[] = [];
+    hazelcastCloud: ClientCloudConfigImpl = new ClientCloudConfigImpl();
+    connectionTimeout = 5000;
+    redoOperation = false;
+    smartRouting = true;
+    ssl: SSLConfigImpl = new SSLConfigImpl();
+
 }

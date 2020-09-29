@@ -13,75 +13,67 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+'use strict';
 
-var Controller = require('./RC');
-var expect = require('chai').expect;
-var HazelcastClient = require('../.').Client;
-var Config = require('../.').Config;
-var Util = require('./Util');
+const { expect } = require('chai');
+const RC = require('./RC');
+const { Client } = require('../.');
 
-describe('Client reconnect', function () {
+describe('ClientReconnectTest', function () {
 
-    var cluster;
-    var client;
+    this.timeout(10000);
 
-    afterEach(function () {
-        client.shutdown();
-        return Controller.terminateCluster(cluster.id);
+    let cluster;
+    let client;
+
+    afterEach(async function () {
+        await client.shutdown();
+        return RC.terminateCluster(cluster.id);
     });
 
-    it('member restarts, while map.put in progress', function () {
-        this.timeout(9000);
-        var member;
-        var map;
-        return Controller.createCluster(null, null).then(function (cl) {
-            cluster = cl;
-            return Controller.startMember(cluster.id);
-        }).then(function (m) {
-            member = m;
-            var cfg = new Config.ClientConfig();
-            cfg.clusterName = cluster.id;
-            cfg.properties['hazelcast.client.heartbeat.interval'] = 1000;
-            cfg.properties['hazelcast.client.heartbeat.timeout'] = 3000;
-            return HazelcastClient.newHazelcastClient(cfg);
-        }).then(function (cl) {
-            client = cl;
-            return client.getMap('test');
-        }).then(function (mp) {
-            map = mp;
-            return Controller.terminateMember(cluster.id, member.uuid);
-        }).then(function () {
-            return Controller.startMember(cluster.id);
-        }).then(function () {
-            return map.put('testkey', 'testvalue');
-        }).then(function () {
-            return map.get('testkey');
-        }).then(function (val) {
-            return expect(val).to.equal('testvalue');
-        })
+    it('member restarts, while map.put in progress', async function () {
+        cluster = await RC.createCluster(null, null);
+        const member = await RC.startMember(cluster.id);
+        client = await Client.newHazelcastClient({
+            clusterName: cluster.id,
+            properties: {
+                'hazelcast.client.heartbeat.interval': 1000,
+                'hazelcast.client.heartbeat.timeout': 3000
+            }
+        });
+        const map = await client.getMap('test');
+
+        await RC.terminateMember(cluster.id, member.uuid);
+        await RC.startMember(cluster.id);
+
+        await map.put('testkey', 'testvalue');
+        const val = await map.get('testkey');
+        expect(val).to.equal('testvalue');
     });
 
     it('member restarts, while map.put in progress 2', function (done) {
-        this.timeout(5000);
-        var member;
-        var map;
-        Controller.createCluster(null, null).then(function (cl) {
+        let member, map;
+        RC.createCluster(null, null).then(function (cl) {
             cluster = cl;
-            return Controller.startMember(cluster.id);
+            return RC.startMember(cluster.id);
         }).then(function (m) {
             member = m;
-            var cfg = new Config.ClientConfig();
-            cfg.clusterName = cluster.id;
-            cfg.properties['hazelcast.client.heartbeat.interval'] = 1000;
-            cfg.properties['hazelcast.client.heartbeat.timeout'] = 3000;
-            cfg.networkConfig.connectionTimeout = 10000;
-            return HazelcastClient.newHazelcastClient(cfg);
+            return Client.newHazelcastClient({
+                clusterName: cluster.id,
+                network: {
+                    connectionTimeout: 10000
+                },
+                properties: {
+                    'hazelcast.client.heartbeat.interval': 1000,
+                    'hazelcast.client.heartbeat.timeout': 3000
+                }
+            });
         }).then(function (cl) {
             client = cl;
             return client.getMap('test');
         }).then(function (mp) {
             map = mp;
-            return Controller.terminateMember(cluster.id, member.uuid);
+            return RC.terminateMember(cluster.id, member.uuid);
         }).then(function () {
             map.put('testkey', 'testvalue').then(function () {
                 return map.get('testkey');
@@ -94,27 +86,27 @@ describe('Client reconnect', function () {
                 }
             });
         }).then(function () {
-            return Controller.startMember(cluster.id);
+            return RC.startMember(cluster.id);
         });
     });
 
     it('create proxy while member is down, member comes back', function (done) {
-        this.timeout(10000);
-        var member;
-        var map;
-        Controller.createCluster(null, null).then(function (cl) {
+        let member, map;
+        RC.createCluster(null, null).then(function (cl) {
             cluster = cl;
-            return Controller.startMember(cluster.id);
+            return RC.startMember(cluster.id);
         }).then(function (m) {
             member = m;
-            var cfg = new Config.ClientConfig();
-            cfg.clusterName = cluster.id;
-            cfg.properties['hazelcast.client.heartbeat.interval'] = 1000;
-            cfg.properties['hazelcast.client.heartbeat.timeout'] = 3000;
-            return HazelcastClient.newHazelcastClient(cfg);
+            return Client.newHazelcastClient({
+                clusterName: cluster.id,
+                properties: {
+                    'hazelcast.client.heartbeat.interval': 1000,
+                    'hazelcast.client.heartbeat.timeout': 3000
+                }
+            });
         }).then(function (cl) {
             client = cl;
-            return Controller.terminateMember(cluster.id, member.uuid);
+            return RC.terminateMember(cluster.id, member.uuid);
         }).then(function () {
             client.getMap('test').then(function (mp) {
                 map = mp;
@@ -126,7 +118,7 @@ describe('Client reconnect', function () {
                 expect(val).to.equal('testvalue');
                 done();
             });
-            Controller.startMember(cluster.id);
+            RC.startMember(cluster.id);
         })
     });
 });

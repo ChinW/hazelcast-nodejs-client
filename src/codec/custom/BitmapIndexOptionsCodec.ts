@@ -16,17 +16,18 @@
 
 /* eslint-disable max-len */
 import {FixSizedTypesCodec} from '../builtin/FixSizedTypesCodec';
-import {BitsUtil} from '../../BitsUtil';
-import {ClientMessage, BEGIN_FRAME, END_FRAME, Frame, DEFAULT_FLAGS} from '../../ClientMessage';
+import {BitsUtil} from '../../util/BitsUtil';
+import {ClientMessage, BEGIN_FRAME, END_FRAME, Frame, DEFAULT_FLAGS} from '../../protocol/ClientMessage';
 import {CodecUtil} from '../builtin/CodecUtil';
+import {InternalBitmapIndexOptions} from '../../config/BitmapIndexOptions';
 import {StringCodec} from '../builtin/StringCodec';
-import {BitmapIndexOptions} from '../../config/BitmapIndexOptions';
 
 const UNIQUE_KEY_TRANSFORMATION_OFFSET = 0;
 const INITIAL_FRAME_SIZE = UNIQUE_KEY_TRANSFORMATION_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
+/** @internal */
 export class BitmapIndexOptionsCodec {
-    static encode(clientMessage: ClientMessage, bitmapIndexOptions: BitmapIndexOptions): void {
+    static encode(clientMessage: ClientMessage, bitmapIndexOptions: InternalBitmapIndexOptions): void {
         clientMessage.addFrame(BEGIN_FRAME.copy());
 
         const initialFrame = Frame.createInitialFrame(INITIAL_FRAME_SIZE, DEFAULT_FLAGS);
@@ -38,16 +39,17 @@ export class BitmapIndexOptionsCodec {
         clientMessage.addFrame(END_FRAME.copy());
     }
 
-    static decode(clientMessage: ClientMessage): BitmapIndexOptions {
+    static decode(clientMessage: ClientMessage): InternalBitmapIndexOptions {
         // begin frame
         clientMessage.nextFrame();
 
         const initialFrame = clientMessage.nextFrame();
-        const uniqueKeyTransformation: number = FixSizedTypesCodec.decodeInt(initialFrame.content, UNIQUE_KEY_TRANSFORMATION_OFFSET);
-        const uniqueKey: string = StringCodec.decode(clientMessage);
+        const uniqueKeyTransformation = FixSizedTypesCodec.decodeInt(initialFrame.content, UNIQUE_KEY_TRANSFORMATION_OFFSET);
+
+        const uniqueKey = StringCodec.decode(clientMessage);
 
         CodecUtil.fastForwardToEndFrame(clientMessage);
 
-        return new BitmapIndexOptions(uniqueKey, uniqueKeyTransformation);
+        return new InternalBitmapIndexOptions(uniqueKey, uniqueKeyTransformation);
     }
 }

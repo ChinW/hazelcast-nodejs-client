@@ -1,7 +1,22 @@
+<<<<<<< HEAD
 
 This client version is forked from https://github.com/hazelcast/hazelcast-nodejs-client/
 
 [Doc](DOCUMENTATION.md#121-setting-up-a-hazelcast-imdg-cluster).
+=======
+<p align="center">
+    <a href="https://github.com/hazelcast/hazelcast-nodejs-client/">
+        <img src="https://3l0wd94f0qdd10om8642z9se-wpengine.netdna-ssl.com/images/logos/hazelcast-logo-horz_md.png" />
+    </a>
+    <h2 align="center">Hazelcast Node.js Client</h2>
+</p>
+
+<p align="center">
+    <a href="https://www.npmjs.com/package/hazelcast-client"><img src="https://img.shields.io/npm/v/hazelcast-client" alt="NPM version"></a>
+    <a href="https://slack.hazelcast.com"><img src="https://img.shields.io/badge/slack-chat-green.svg" alt="Chat on Slack"></a>
+    <a href="https://twitter.com/Hazelcast"><img src="https://img.shields.io/twitter/follow/Hazelcast.svg?style=flat-square&colorA=1da1f2&colorB=&label=Follow%20on%20Twitter" alt="Follow on Twitter"></a>
+</p>
+>>>>>>> c52a41f831fecb21cca161c26c4046a2213e2af8
 
 ---
 
@@ -27,7 +42,7 @@ The quickest way to start a single member cluster for development purposes is to
 [Docker images](https://hub.docker.com/r/hazelcast/hazelcast/).
 
 ```bash
-docker run -p 5701:5701 hazelcast/hazelcast:4.0.1
+docker run -p 5701:5701 hazelcast/hazelcast:4.0.2
 ```
 
 You can also use our ZIP or TAR [distributions](https://hazelcast.org/imdg/download/archives/#hazelcast-imdg)

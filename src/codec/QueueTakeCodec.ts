@@ -15,8 +15,8 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
-import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {BitsUtil} from '../util/BitsUtil';
+import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import {StringCodec} from './builtin/StringCodec';
 import {Data} from '../serialization/Data';
 import {DataCodec} from './builtin/DataCodec';
@@ -29,10 +29,7 @@ const REQUEST_MESSAGE_TYPE = 198144;
 
 const REQUEST_INITIAL_FRAME_SIZE = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
-export interface QueueTakeResponseParams {
-    response: Data;
-}
-
+/** @internal */
 export class QueueTakeCodec {
     static encodeRequest(name: string): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -47,12 +44,10 @@ export class QueueTakeCodec {
         return clientMessage;
     }
 
-    static decodeResponse(clientMessage: ClientMessage): QueueTakeResponseParams {
+    static decodeResponse(clientMessage: ClientMessage): Data {
         // empty initial frame
         clientMessage.nextFrame();
 
-        return {
-            response: CodecUtil.decodeNullable(clientMessage, DataCodec.decode),
-        };
+        return CodecUtil.decodeNullable(clientMessage, DataCodec.decode);
     }
 }

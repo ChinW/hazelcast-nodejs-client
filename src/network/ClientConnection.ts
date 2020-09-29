@@ -13,56 +13,87 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
-import * as Promise from 'bluebird';
 import * as net from 'net';
 import {EventEmitter} from 'events';
-import {BitsUtil} from '../BitsUtil';
+import {BitsUtil} from '../util/BitsUtil';
 import {BuildInfo} from '../BuildInfo';
-import HazelcastClient from '../HazelcastClient';
-import {IOError} from '../HazelcastError';
-import {DeferredPromise} from '../Util';
-import {Address} from '../Address';
-import {UUID} from '../core/UUID';
+import {HazelcastClient} from '../HazelcastClient';
+import {AddressImpl, IOError, UUID} from '../core';
+import {ClientMessageHandler} from '../protocol/ClientMessage';
+import {deferredPromise, DeferredPromise} from '../util/Util';
 import {ILogger} from '../logging/ILogger';
-import {ClientMessage, Frame, SIZE_OF_FRAME_LENGTH_AND_FLAGS} from '../ClientMessage';
+import {
+    ClientMessage,
+    Frame,
+    SIZE_OF_FRAME_LENGTH_AND_FLAGS
+} from '../protocol/ClientMessage';
 
 const FROZEN_ARRAY = Object.freeze([]) as OutputQueueItem[];
 const PROPERTY_PIPELINING_ENABLED = 'hazelcast.client.autopipelining.enabled';
 const PROPERTY_PIPELINING_THRESHOLD = 'hazelcast.client.autopipelining.threshold.bytes';
 const PROPERTY_NO_DELAY = 'hazelcast.client.socket.no.delay';
 
-interface OutputQueueItem {
-    buffer: Buffer;
-    resolver: Promise.Resolver<void>;
+abstract class Writer extends EventEmitter {
+
+    abstract write(message: ClientMessage, resolver: DeferredPromise<void>): void;
+
+    abstract close(): void;
+
 }
 
-export class PipelinedWriter extends EventEmitter {
+interface OutputQueueItem {
+
+    message: ClientMessage;
+
+    resolver: DeferredPromise<void>;
+
+}
+
+/** @internal */
+export class PipelinedWriter extends Writer {
 
     private readonly socket: net.Socket;
     private queue: OutputQueueItem[] = [];
     private error: Error;
     private scheduled = false;
+    private canWrite = true;
     // coalescing threshold in bytes
     private readonly threshold: number;
+    // reusable buffer for coalescing
+    private readonly coalesceBuf: Buffer;
 
     constructor(socket: net.Socket, threshold: number) {
         super();
         this.socket = socket;
         this.threshold = threshold;
+        this.coalesceBuf = Buffer.allocUnsafe(threshold);
+
+        // write queued items on drain event
+        socket.on('drain', () => {
+            this.canWrite = true;
+            this.schedule();
+        });
     }
 
-    write(buffer: Buffer, resolver: Promise.Resolver<void>): void {
+    write(message: ClientMessage, resolver: DeferredPromise<void>): void {
         if (this.error) {
             // if there was a write error, it's useless to keep writing to the socket
             return process.nextTick(() => resolver.reject(this.error));
         }
-        this.queue.push({ buffer, resolver });
+        this.queue.push({ message, resolver });
         this.schedule();
     }
 
+    close(): void {
+        this.canWrite = false;
+        // no more items can be added now
+        this.queue = FROZEN_ARRAY;
+    }
+
     private schedule(): void {
-        if (!this.scheduled) {
+        if (!this.scheduled && this.canWrite) {
             this.scheduled = true;
             // nextTick allows queue to be processed on the current event loop phase
             process.nextTick(() => this.process());
@@ -74,16 +105,18 @@ export class PipelinedWriter extends EventEmitter {
             return;
         }
 
-        const buffers: Buffer[] = [];
-        const resolvers: Array<Promise.Resolver<void>> = [];
         let totalLength = 0;
-
-        while (this.queue.length > 0 && totalLength < this.threshold) {
-            const item = this.queue.shift();
-            const data = item.buffer;
-            totalLength += data.length;
-            buffers.push(data);
-            resolvers.push(item.resolver);
+        let queueIdx = 0;
+        while (queueIdx < this.queue.length && totalLength < this.threshold) {
+            const msg = this.queue[queueIdx].message;
+            const msgLength = msg.getTotalLength();
+            // if the next buffer exceeds the threshold,
+            // try to take multiple queued buffers which fit this.coalesceBuf
+            if (queueIdx > 0 && totalLength + msgLength > this.threshold) {
+                break;
+            }
+            totalLength += msgLength;
+            queueIdx++;
         }
 
         if (totalLength === 0) {
@@ -91,43 +124,57 @@ export class PipelinedWriter extends EventEmitter {
             return;
         }
 
-        // coalesce buffers and write to the socket: no further writes until flushed
-        const merged = buffers.length === 1 ? buffers[0] : Buffer.concat(buffers, totalLength);
-        this.socket.write(merged as any, (err: Error) => {
+        const writeBatch = this.queue.slice(0, queueIdx);
+        this.queue = this.queue.slice(queueIdx);
+
+        let buf;
+        if (writeBatch.length === 1 && totalLength > this.threshold) {
+            // take the only large message
+            buf = writeBatch[0].message.toBuffer();
+        } else {
+            // coalesce buffers
+            let pos = 0;
+            for (const item of writeBatch) {
+                pos = item.message.writeTo(this.coalesceBuf, pos);
+            }
+            buf = this.coalesceBuf.slice(0, totalLength);
+        }
+
+        // write to the socket: no further writes until flushed
+        this.canWrite = this.socket.write(buf, (err: Error) => {
             if (err) {
-                this.handleError(err, resolvers);
+                this.handleError(err, writeBatch);
                 return;
             }
 
             this.emit('write');
-            for (const r of resolvers) {
-                r.resolve();
+            for (const item of writeBatch) {
+                item.resolver.resolve();
             }
-            if (this.queue.length === 0) {
-                // will start running on the next message
+            if (this.queue.length === 0 || !this.canWrite) {
+                // will start running on the next message or drain event
                 this.scheduled = false;
                 return;
             }
-            // setImmediate allows IO between writes
+            // setImmediate allows I/O between writes
             setImmediate(() => this.process());
         });
     }
 
-    private handleError(err: any, sentResolvers: Array<Promise.Resolver<void>>): void {
+    private handleError(err: any, sentResolvers: OutputQueueItem[]): void {
         this.error = new IOError(err);
-        for (const r of sentResolvers) {
-            r.reject(this.error);
+        for (const item of sentResolvers) {
+            item.resolver.reject(this.error);
         }
-        // no more items can be added now
-        const q = this.queue;
-        this.queue = FROZEN_ARRAY;
-        for (const it of q) {
-            it.resolver.reject(this.error);
+        for (const item of this.queue) {
+            item.resolver.reject(this.error);
         }
+        this.close();
     }
 }
 
-export class DirectWriter extends EventEmitter {
+/** @internal */
+export class DirectWriter extends Writer {
 
     private readonly socket: net.Socket;
 
@@ -136,8 +183,9 @@ export class DirectWriter extends EventEmitter {
         this.socket = socket;
     }
 
-    write(buffer: Buffer, resolver: Promise.Resolver<void>): void {
-        this.socket.write(buffer as any, (err: any) => {
+    write(message: ClientMessage, resolver: DeferredPromise<void>): void {
+        const buffer = message.toBuffer();
+        this.socket.write(buffer, (err: any) => {
             if (err) {
                 resolver.reject(new IOError(err));
                 return;
@@ -146,8 +194,13 @@ export class DirectWriter extends EventEmitter {
             resolver.resolve();
         });
     }
+
+    close(): void {
+        // no-op
+    }
 }
 
+/** @internal */
 export class ClientMessageReader {
 
     private chunks: Buffer[] = [];
@@ -235,35 +288,45 @@ export class ClientMessageReader {
     }
 }
 
+/** @internal */
 export class FragmentedClientMessageHandler {
     private readonly fragmentedMessages = new Map<number, ClientMessage>();
+    private readonly logger: ILogger;
 
-    handleFragmentedMessage(clientMessage: ClientMessage, callback: Function): void {
+    constructor(logger: ILogger) {
+        this.logger = logger;
+    }
+
+    handleFragmentedMessage(clientMessage: ClientMessage, callback: ClientMessageHandler): void {
         const fragmentationFrame = clientMessage.startFrame;
         const fragmentationId = clientMessage.getFragmentationId();
         clientMessage.dropFragmentationFrame();
         if (fragmentationFrame.hasBeginFragmentFlag()) {
             this.fragmentedMessages.set(fragmentationId, clientMessage);
-        } else if (fragmentationFrame.hasEndFragmentFlag()) {
-            const mergedMessage = this.mergeIntoExistingClientMessage(fragmentationId, clientMessage);
-            callback(mergedMessage);
         } else {
-            this.mergeIntoExistingClientMessage(fragmentationId, clientMessage);
-        }
-    }
+            const existingMessage = this.fragmentedMessages.get(fragmentationId);
+            if (existingMessage == null) {
+                this.logger.debug('FragmentedClientMessageHandler',
+                    'A fragmented message without the begin part is received. Fragmentation id: ' + fragmentationId);
+                return;
+            }
 
-    private mergeIntoExistingClientMessage(fragmentationId: number, clientMessage: ClientMessage): ClientMessage {
-        const existingMessage = this.fragmentedMessages.get(fragmentationId);
-        existingMessage.merge(clientMessage);
-        return existingMessage;
+            existingMessage.merge(clientMessage);
+            if (fragmentationFrame.hasEndFragmentFlag()) {
+                this.fragmentedMessages.delete(fragmentationId);
+                callback(existingMessage);
+            }
+        }
     }
 }
 
+/** @internal */
 export class ClientConnection {
+
     private readonly connectionId: number;
-    private remoteAddress: Address;
+    private remoteAddress: AddressImpl;
     private remoteUuid: UUID;
-    private readonly localAddress: Address;
+    private readonly localAddress: AddressImpl;
     private lastReadTimeMillis: number;
     private lastWriteTimeMillis: number;
     private readonly client: HazelcastClient;
@@ -271,15 +334,14 @@ export class ClientConnection {
     private closedTime: number;
     private closedReason: string;
     private closedCause: Error;
-    private connectedServerVersionString: string;
     private connectedServerVersion: number;
     private readonly socket: net.Socket;
-    private readonly writer: PipelinedWriter | DirectWriter;
+    private readonly writer: Writer;
     private readonly reader: ClientMessageReader;
     private readonly logger: ILogger;
     private readonly fragmentedMessageHandler: FragmentedClientMessageHandler;
 
-    constructor(client: HazelcastClient, remoteAddress: Address, socket: net.Socket, connectionId: number) {
+    constructor(client: HazelcastClient, remoteAddress: AddressImpl, socket: net.Socket, connectionId: number) {
         const enablePipelining = client.getConfig().properties[PROPERTY_PIPELINING_ENABLED] as boolean;
         const pipeliningThreshold = client.getConfig().properties[PROPERTY_PIPELINING_THRESHOLD] as number;
         const noDelay = client.getConfig().properties[PROPERTY_NO_DELAY] as boolean;
@@ -288,10 +350,9 @@ export class ClientConnection {
         this.client = client;
         this.socket = socket;
         this.remoteAddress = remoteAddress;
-        this.localAddress = new Address(socket.localAddress, socket.localPort);
+        this.localAddress = new AddressImpl(socket.localAddress, socket.localPort);
         this.lastReadTimeMillis = 0;
         this.closedTime = 0;
-        this.connectedServerVersionString = null;
         this.connectedServerVersion = BuildInfo.UNKNOWN_VERSION_ID;
         this.writer = enablePipelining ? new PipelinedWriter(socket, pipeliningThreshold) : new DirectWriter(socket);
         this.writer.on('write', () => {
@@ -300,14 +361,14 @@ export class ClientConnection {
         this.reader = new ClientMessageReader();
         this.connectionId = connectionId;
         this.logger = this.client.getLoggingService().getLogger();
-        this.fragmentedMessageHandler = new FragmentedClientMessageHandler();
+        this.fragmentedMessageHandler = new FragmentedClientMessageHandler(this.logger);
     }
 
     /**
      * Returns the address of local port that is associated with this connection.
      * @returns
      */
-    getLocalAddress(): Address {
+    getLocalAddress(): AddressImpl {
         return this.localAddress;
     }
 
@@ -315,11 +376,11 @@ export class ClientConnection {
      * Returns the address of remote node that is associated with this connection.
      * @returns
      */
-    getRemoteAddress(): Address {
+    getRemoteAddress(): AddressImpl {
         return this.remoteAddress;
     }
 
-    setRemoteAddress(address: Address): void {
+    setRemoteAddress(address: AddressImpl): void {
         this.remoteAddress = address;
     }
 
@@ -331,14 +392,13 @@ export class ClientConnection {
         this.remoteUuid = remoteUuid;
     }
 
-    write(buffer: Buffer): Promise<void> {
-        const deferred = DeferredPromise<void>();
-        this.writer.write(buffer, deferred);
+    write(message: ClientMessage): Promise<void> {
+        const deferred = deferredPromise<void>();
+        this.writer.write(message, deferred);
         return deferred.promise;
     }
 
     setConnectedServerVersion(versionString: string): void {
-        this.connectedServerVersionString = versionString;
         this.connectedServerVersion = BuildInfo.calculateServerVersionFromString(versionString);
     }
 
@@ -360,6 +420,7 @@ export class ClientConnection {
 
         this.logClose();
 
+        this.writer.close();
         this.socket.end();
 
         this.client.getConnectionManager().onConnectionClose(this);
@@ -367,6 +428,10 @@ export class ClientConnection {
 
     isAlive(): boolean {
         return this.closedTime === 0;
+    }
+
+    getClosedReason(): string {
+        return this.closedReason;
     }
 
     getStartTime(): number {
@@ -401,7 +466,7 @@ export class ClientConnection {
      * Registers a function to pass received data on 'data' events on this connection.
      * @param callback
      */
-    registerResponseCallback(callback: Function): void {
+    registerResponseCallback(callback: ClientMessageHandler): void {
         this.socket.on('data', (buffer: Buffer) => {
             this.lastReadTimeMillis = Date.now();
             this.reader.append(buffer);

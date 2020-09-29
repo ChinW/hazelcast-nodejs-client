@@ -14,7 +14,13 @@
  * limitations under the License.
  */
 
-import * as Promise from 'bluebird';
+import * as Long from 'long';
+import {
+    Predicate,
+    ReadOnlyLazyList,
+    ListComparator,
+    UUID
+} from '../core';
 import {ReplicatedMapAddEntryListenerCodec} from '../codec/ReplicatedMapAddEntryListenerCodec';
 import {ReplicatedMapAddEntryListenerToKeyCodec} from '../codec/ReplicatedMapAddEntryListenerToKeyCodec';
 // eslint-disable-next-line max-len
@@ -33,21 +39,19 @@ import {ReplicatedMapRemoveCodec} from '../codec/ReplicatedMapRemoveCodec';
 import {ReplicatedMapRemoveEntryListenerCodec} from '../codec/ReplicatedMapRemoveEntryListenerCodec';
 import {ReplicatedMapSizeCodec} from '../codec/ReplicatedMapSizeCodec';
 import {ReplicatedMapValuesCodec} from '../codec/ReplicatedMapValuesCodec';
-import {EventType} from '../core/EventType';
-import {EntryEvent, EntryListener} from '../core/EntryListener';
-import {Predicate} from '../core/Predicate';
-import {ReadOnlyLazyList} from '../core/ReadOnlyLazyList';
-import {ListenerMessageCodec} from '../ListenerMessageCodec';
+import {EventType} from './EventType';
+import {EntryEvent, EntryListener} from './EntryListener';
+import {ListenerMessageCodec} from '../listener/ListenerMessageCodec';
 import {Data} from '../serialization/Data';
-import {assertNotNull} from '../Util';
-import {ArrayComparator} from '../util/ArrayComparator';
+import {assertNotNull} from '../util/Util';
 import {ReplicatedMap} from './ReplicatedMap';
 import {PartitionSpecificProxy} from './PartitionSpecificProxy';
-import {MapEvent} from '../core/MapListener';
-import Long = require('long');
-import {UUID} from '../core/UUID';
-import {ClientMessage} from '../ClientMessage';
-import * as SerializationUtil from '../serialization/SerializationUtil';
+import {MapEvent} from './MapListener';
+import {ClientMessage} from '../protocol/ClientMessage';
+import {deserializeEntryList} from '../serialization/SerializationUtil';
+
+type EntryEventHander = (key: Data, value: Data, oldValue: Data, mergingValue: Data,
+                         eventType: number, uuid: UUID, numberOfAffectedEntries: number) => void
 
 export class ReplicatedMapProxy<K, V> extends PartitionSpecificProxy implements ReplicatedMap<K, V> {
 
@@ -57,17 +61,15 @@ export class ReplicatedMapProxy<K, V> extends PartitionSpecificProxy implements 
 
         const valueData: Data = this.toData(value);
         const keyData: Data = this.toData(key);
-
         return this.encodeInvokeOnKey(ReplicatedMapPutCodec, keyData, keyData, valueData, ttl)
             .then((clientMessage) => {
                 const response = ReplicatedMapPutCodec.decodeResponse(clientMessage);
-                return this.toObject(response.response);
+                return this.toObject(response);
             });
     }
 
     clear(): Promise<void> {
-        return this.encodeInvokeOnRandomTarget(ReplicatedMapClearCodec)
-            .then(() => undefined);
+        return this.encodeInvokeOnRandomTarget(ReplicatedMapClearCodec).then();
     }
 
     get(key: K): Promise<V> {
@@ -77,7 +79,7 @@ export class ReplicatedMapProxy<K, V> extends PartitionSpecificProxy implements 
         return this.encodeInvokeOnKey(ReplicatedMapGetCodec, keyData, keyData)
             .then((clientMessage) => {
                 const response = ReplicatedMapGetCodec.decodeResponse(clientMessage);
-                return this.toObject(response.response);
+                return this.toObject(response);
             });
     }
 
@@ -86,10 +88,7 @@ export class ReplicatedMapProxy<K, V> extends PartitionSpecificProxy implements 
 
         const keyData = this.toData(key);
         return this.encodeInvokeOnKey(ReplicatedMapContainsKeyCodec, keyData, keyData)
-            .then((clientMessage) => {
-                const response = ReplicatedMapContainsKeyCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(ReplicatedMapContainsKeyCodec.decodeResponse);
     }
 
     containsValue(value: V): Promise<boolean> {
@@ -97,26 +96,17 @@ export class ReplicatedMapProxy<K, V> extends PartitionSpecificProxy implements 
 
         const valueData = this.toData(value);
         return this.encodeInvoke(ReplicatedMapContainsValueCodec, valueData)
-            .then((clientMessage) => {
-                const response = ReplicatedMapContainsValueCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(ReplicatedMapContainsValueCodec.decodeResponse);
     }
 
     size(): Promise<number> {
         return this.encodeInvoke(ReplicatedMapSizeCodec)
-            .then((clientMessage) => {
-                const response = ReplicatedMapSizeCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(ReplicatedMapSizeCodec.decodeResponse);
     }
 
     isEmpty(): Promise<boolean> {
         return this.encodeInvoke(ReplicatedMapIsEmptyCodec)
-            .then((clientMessage) => {
-                const response = ReplicatedMapIsEmptyCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(ReplicatedMapIsEmptyCodec.decodeResponse);
     }
 
     remove(key: K): Promise<V> {
@@ -126,7 +116,7 @@ export class ReplicatedMapProxy<K, V> extends PartitionSpecificProxy implements 
         return this.encodeInvokeOnKey(ReplicatedMapRemoveCodec, keyData, keyData)
             .then((clientMessage) => {
                 const response = ReplicatedMapRemoveCodec.decodeResponse(clientMessage);
-                return this.toObject(response.response);
+                return this.toObject(response);
             });
     }
 
@@ -141,8 +131,7 @@ export class ReplicatedMapProxy<K, V> extends PartitionSpecificProxy implements 
             entries.push([keyData, valueData]);
         }
 
-        return this.encodeInvokeOnRandomTarget(ReplicatedMapPutAllCodec, entries)
-            .then(() => undefined);
+        return this.encodeInvokeOnRandomTarget(ReplicatedMapPutAllCodec, entries).then();
     }
 
     keySet(): Promise<K[]> {
@@ -150,15 +139,14 @@ export class ReplicatedMapProxy<K, V> extends PartitionSpecificProxy implements 
         return this.encodeInvoke(ReplicatedMapKeySetCodec)
             .then((clientMessage) => {
                 const response = ReplicatedMapKeySetCodec.decodeResponse(clientMessage);
-                return response.response.map(toObject);
+                return response.map(toObject);
             });
     }
 
-    values(comparator?: ArrayComparator<V>): Promise<ReadOnlyLazyList<V>> {
+    values(comparator?: ListComparator<V>): Promise<ReadOnlyLazyList<V>> {
         return this.encodeInvoke(ReplicatedMapValuesCodec)
             .then((clientMessage) => {
-                const response = ReplicatedMapValuesCodec.decodeResponse(clientMessage);
-                const valuesData = response.response;
+                const valuesData = ReplicatedMapValuesCodec.decodeResponse(clientMessage);
                 if (comparator) {
                     const desValues = valuesData.map(this.toObject.bind(this));
                     return new ReadOnlyLazyList(desValues.sort(comparator), this.client.getSerializationService());
@@ -171,7 +159,7 @@ export class ReplicatedMapProxy<K, V> extends PartitionSpecificProxy implements 
         return this.encodeInvoke(ReplicatedMapEntrySetCodec)
             .then((clientMessage) => {
                 const response = ReplicatedMapEntrySetCodec.decodeResponse(clientMessage);
-                return SerializationUtil.deserializeEntryList(this.toObject.bind(this), response.response);
+                return deserializeEntryList(this.toObject.bind(this), response);
             });
     }
 
@@ -198,7 +186,7 @@ export class ReplicatedMapProxy<K, V> extends PartitionSpecificProxy implements 
     private addEntryListenerInternal(listener: EntryListener<K, V>, predicate: Predicate,
                                      key: K): Promise<string> {
         const toObject = this.toObject.bind(this);
-        const entryEventHandler = (key: K, value: V, oldValue: V, mergingValue: V,
+        const entryEventHandler = (key: Data, value: Data, oldValue: Data, mergingValue: Data,
                                    event: number, uuid: UUID, numberOfAffectedEntries: number): void => {
             const member = this.client.getClusterService().getMember(uuid);
             const name = this.name;
@@ -231,7 +219,9 @@ export class ReplicatedMapProxy<K, V> extends PartitionSpecificProxy implements 
                 listener[mapEventMethod].apply(null, [mapEvent]);
             }
         };
-        let listenerHandler: Function;
+        let listenerHandler: (message: ClientMessage,
+                              handler: EntryEventHander,
+                              toObjectFn: (data: Data) => any) => void;
         let codec: ListenerMessageCodec;
         if (key && predicate) {
             const keyData = this.toData(key);
@@ -262,7 +252,7 @@ export class ReplicatedMapProxy<K, V> extends PartitionSpecificProxy implements 
                 return ReplicatedMapAddEntryListenerCodec.encodeRequest(name, localOnly);
             },
             decodeAddResponse(msg: ClientMessage): UUID {
-                return ReplicatedMapAddEntryListenerCodec.decodeResponse(msg).response;
+                return ReplicatedMapAddEntryListenerCodec.decodeResponse(msg);
             },
             encodeRemoveRequest(listenerId: UUID): ClientMessage {
                 return ReplicatedMapRemoveEntryListenerCodec.encodeRequest(name, listenerId);
@@ -276,7 +266,7 @@ export class ReplicatedMapProxy<K, V> extends PartitionSpecificProxy implements 
                 return ReplicatedMapAddEntryListenerToKeyCodec.encodeRequest(name, keyData, localOnly);
             },
             decodeAddResponse(msg: ClientMessage): UUID {
-                return ReplicatedMapAddEntryListenerToKeyCodec.decodeResponse(msg).response;
+                return ReplicatedMapAddEntryListenerToKeyCodec.decodeResponse(msg);
             },
             encodeRemoveRequest(listenerId: UUID): ClientMessage {
                 return ReplicatedMapRemoveEntryListenerCodec.encodeRequest(name, listenerId);
@@ -290,7 +280,7 @@ export class ReplicatedMapProxy<K, V> extends PartitionSpecificProxy implements 
                 return ReplicatedMapAddEntryListenerWithPredicateCodec.encodeRequest(name, predicateData, localOnly);
             },
             decodeAddResponse(msg: ClientMessage): UUID {
-                return ReplicatedMapAddEntryListenerWithPredicateCodec.decodeResponse(msg).response;
+                return ReplicatedMapAddEntryListenerWithPredicateCodec.decodeResponse(msg);
             },
             encodeRemoveRequest(listenerId: UUID): ClientMessage {
                 return ReplicatedMapRemoveEntryListenerCodec.encodeRequest(name, listenerId);
@@ -305,7 +295,7 @@ export class ReplicatedMapProxy<K, V> extends PartitionSpecificProxy implements 
                     localOnly);
             },
             decodeAddResponse(msg: ClientMessage): UUID {
-                return ReplicatedMapAddEntryListenerToKeyWithPredicateCodec.decodeResponse(msg).response;
+                return ReplicatedMapAddEntryListenerToKeyWithPredicateCodec.decodeResponse(msg);
             },
             encodeRemoveRequest(listenerId: UUID): ClientMessage {
                 return ReplicatedMapRemoveEntryListenerCodec.encodeRequest(name, listenerId);

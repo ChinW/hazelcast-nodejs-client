@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
-import * as Promise from 'bluebird';
 import {SetAddAllCodec} from '../codec/SetAddAllCodec';
 import {SetAddCodec} from '../codec/SetAddCodec';
 import {SetAddListenerCodec} from '../codec/SetAddListenerCodec';
@@ -28,99 +28,72 @@ import {SetIsEmptyCodec} from '../codec/SetIsEmptyCodec';
 import {SetRemoveCodec} from '../codec/SetRemoveCodec';
 import {SetRemoveListenerCodec} from '../codec/SetRemoveListenerCodec';
 import {SetSizeCodec} from '../codec/SetSizeCodec';
-import {ItemEvent, ItemEventType, ItemListener} from '../core/ItemListener';
-import {ListenerMessageCodec} from '../ListenerMessageCodec';
+import {ItemEvent, ItemEventType, ItemListener} from './ItemListener';
+import {ListenerMessageCodec} from '../listener/ListenerMessageCodec';
 import {Data} from '../serialization/Data';
 import {ISet} from './ISet';
 import {PartitionSpecificProxy} from './PartitionSpecificProxy';
-import {ClientMessage} from '../ClientMessage';
-import {UUID} from '../core/UUID';
+import {ClientMessage} from '../protocol/ClientMessage';
+import {UUID} from '../core';
 
+/** @internal */
 export class SetProxy<E> extends PartitionSpecificProxy implements ISet<E> {
 
     add(entry: E): Promise<boolean> {
         return this.encodeInvoke(SetAddCodec, this.toData(entry))
-            .then((clientMessage) => {
-                const response = SetAddCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(SetAddCodec.decodeResponse);
     }
 
     addAll(items: E[]): Promise<boolean> {
         return this.encodeInvoke(SetAddAllCodec, this.serializeList(items))
-            .then((clientMessage) => {
-                const response = SetAddAllCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(SetAddAllCodec.decodeResponse);
     }
 
     toArray(): Promise<E[]> {
         return this.encodeInvoke(SetGetAllCodec)
             .then((clientMessage) => {
                 const response = SetGetAllCodec.decodeResponse(clientMessage);
-                return response.response.map(this.toObject.bind(this));
+                return response.map(this.toObject.bind(this));
             });
     }
 
     clear(): Promise<void> {
-        return this.encodeInvoke(SetClearCodec)
-            .then(() => undefined);
+        return this.encodeInvoke(SetClearCodec).then();
     }
 
     contains(entry: E): Promise<boolean> {
         return this.encodeInvoke(SetContainsCodec, this.toData(entry))
-            .then((clientMessage) => {
-                const response = SetContainsCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(SetContainsCodec.decodeResponse);
     }
 
     containsAll(items: E[]): Promise<boolean> {
         return this.encodeInvoke(SetContainsAllCodec, this.serializeList(items))
-            .then((clientMessage) => {
-                const response = SetContainsAllCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(SetContainsAllCodec.decodeResponse);
     }
 
     isEmpty(): Promise<boolean> {
         return this.encodeInvoke(SetIsEmptyCodec)
-            .then((clientMessage) => {
-                const response = SetIsEmptyCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(SetIsEmptyCodec.decodeResponse);
     }
 
     remove(entry: E): Promise<boolean> {
         return this.encodeInvoke(SetRemoveCodec, this.toData(entry))
-            .then((clientMessage) => {
-                const response = SetRemoveCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(SetRemoveCodec.decodeResponse);
     }
 
     removeAll(items: E[]): Promise<boolean> {
         return this.encodeInvoke(SetCompareAndRemoveAllCodec, this.serializeList(items))
-            .then((clientMessage) => {
-                const response = SetCompareAndRemoveAllCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(SetCompareAndRemoveAllCodec.decodeResponse);
     }
 
     retainAll(items: E[]): Promise<boolean> {
         return this.encodeInvoke(SetCompareAndRetainAllCodec, this.serializeList(items))
-            .then((clientMessage) => {
-                const response = SetCompareAndRetainAllCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(SetCompareAndRetainAllCodec.decodeResponse);
     }
 
     size(): Promise<number> {
         return this.encodeInvoke(SetSizeCodec)
-            .then((clientMessage) => {
-                const response = SetSizeCodec.decodeResponse(clientMessage);
-                return response.response;
-            });
+            .then(SetSizeCodec.decodeResponse);
     }
 
     addItemListener(listener: ItemListener<E>, includeValue = true): Promise<string> {
@@ -158,7 +131,7 @@ export class SetProxy<E> extends PartitionSpecificProxy implements ISet<E> {
                 return SetAddListenerCodec.encodeRequest(name, includeValue, localOnly);
             },
             decodeAddResponse(msg: ClientMessage): UUID {
-                return SetAddListenerCodec.decodeResponse(msg).response;
+                return SetAddListenerCodec.decodeResponse(msg);
             },
             encodeRemoveRequest(listenerId: UUID): ClientMessage {
                 return SetRemoveListenerCodec.encodeRequest(name, listenerId);

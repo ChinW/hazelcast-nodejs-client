@@ -16,20 +16,19 @@
 
 /* eslint-disable max-len */
 import {FixSizedTypesCodec} from '../builtin/FixSizedTypesCodec';
-import {BitsUtil} from '../../BitsUtil';
-import {ClientMessage, BEGIN_FRAME, END_FRAME, Frame, DEFAULT_FLAGS} from '../../ClientMessage';
+import {BitsUtil} from '../../util/BitsUtil';
+import {ClientMessage, BEGIN_FRAME, END_FRAME, Frame, DEFAULT_FLAGS} from '../../protocol/ClientMessage';
 import {CodecUtil} from '../builtin/CodecUtil';
-import {AnchorDataListHolder} from '../../protocol/AnchorDataListHolder';
-import {AnchorDataListHolderCodec} from './AnchorDataListHolderCodec';
-import {Data} from '../../serialization/Data';
-import {DataCodec} from '../builtin/DataCodec';
 import {PagingPredicateHolder} from '../../protocol/PagingPredicateHolder';
+import {AnchorDataListHolderCodec} from './AnchorDataListHolderCodec';
+import {DataCodec} from '../builtin/DataCodec';
 
 const PAGE_SIZE_OFFSET = 0;
 const PAGE_OFFSET = PAGE_SIZE_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 const ITERATION_TYPE_ID_OFFSET = PAGE_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 const INITIAL_FRAME_SIZE = ITERATION_TYPE_ID_OFFSET + BitsUtil.BYTE_SIZE_IN_BYTES;
 
+/** @internal */
 export class PagingPredicateHolderCodec {
     static encode(clientMessage: ClientMessage, pagingPredicateHolder: PagingPredicateHolder): void {
         clientMessage.addFrame(BEGIN_FRAME.copy());
@@ -53,13 +52,14 @@ export class PagingPredicateHolderCodec {
         clientMessage.nextFrame();
 
         const initialFrame = clientMessage.nextFrame();
-        const pageSize: number = FixSizedTypesCodec.decodeInt(initialFrame.content, PAGE_SIZE_OFFSET);
-        const page: number = FixSizedTypesCodec.decodeInt(initialFrame.content, PAGE_OFFSET);
-        const iterationTypeId: number = FixSizedTypesCodec.decodeByte(initialFrame.content, ITERATION_TYPE_ID_OFFSET);
-        const anchorDataListHolder: AnchorDataListHolder = AnchorDataListHolderCodec.decode(clientMessage);
-        const predicateData: Data = CodecUtil.decodeNullable(clientMessage, DataCodec.decode);
-        const comparatorData: Data = CodecUtil.decodeNullable(clientMessage, DataCodec.decode);
-        const partitionKeyData: Data = CodecUtil.decodeNullable(clientMessage, DataCodec.decode);
+        const pageSize = FixSizedTypesCodec.decodeInt(initialFrame.content, PAGE_SIZE_OFFSET);
+        const page = FixSizedTypesCodec.decodeInt(initialFrame.content, PAGE_OFFSET);
+        const iterationTypeId = FixSizedTypesCodec.decodeByte(initialFrame.content, ITERATION_TYPE_ID_OFFSET);
+
+        const anchorDataListHolder = AnchorDataListHolderCodec.decode(clientMessage);
+        const predicateData = CodecUtil.decodeNullable(clientMessage, DataCodec.decode);
+        const comparatorData = CodecUtil.decodeNullable(clientMessage, DataCodec.decode);
+        const partitionKeyData = CodecUtil.decodeNullable(clientMessage, DataCodec.decode);
 
         CodecUtil.fastForwardToEndFrame(clientMessage);
 

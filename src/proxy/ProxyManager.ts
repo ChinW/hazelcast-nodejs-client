@@ -13,17 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
-import * as Promise from 'bluebird';
 import {ClientAddDistributedObjectListenerCodec} from '../codec/ClientAddDistributedObjectListenerCodec';
 import {ClientCreateProxyCodec} from '../codec/ClientCreateProxyCodec';
 import {ClientDestroyProxyCodec} from '../codec/ClientDestroyProxyCodec';
 import {ClientRemoveDistributedObjectListenerCodec} from '../codec/ClientRemoveDistributedObjectListenerCodec';
-import {DistributedObject} from '../DistributedObject';
-import HazelcastClient from '../HazelcastClient';
+import {DistributedObject} from '../core/DistributedObject';
+import {HazelcastClient} from '../HazelcastClient';
 import {Invocation} from '../invocation/InvocationService';
-import {ListenerMessageCodec} from '../ListenerMessageCodec';
-import {FlakeIdGeneratorProxy} from './FlakeIdGeneratorProxy';
+import {ListenerMessageCodec} from '../listener/ListenerMessageCodec';
+import {FlakeIdGeneratorProxy} from './flakeid/FlakeIdGeneratorProxy';
 import {ListProxy} from './ListProxy';
 import {MapProxy} from './MapProxy';
 import {MultiMapProxy} from './MultiMapProxy';
@@ -35,18 +35,21 @@ import {RingbufferProxy} from './ringbuffer/RingbufferProxy';
 import {SetProxy} from './SetProxy';
 import {ReliableTopicProxy} from './topic/ReliableTopicProxy';
 import {DistributedObjectEvent, DistributedObjectListener} from '../core/DistributedObjectListener';
-import {DeferredPromise} from '../Util';
-import {ILogger} from '../logging/ILogger';
-import {ClientMessage} from '../ClientMessage';
+import {deferredPromise} from '../util/Util';
+import {ClientMessage} from '../protocol/ClientMessage';
 import {UUID} from '../core/UUID';
 import {ClientCreateProxiesCodec} from '../codec/ClientCreateProxiesCodec';
 import {BaseProxy} from './BaseProxy';
 import {Ringbuffer} from './Ringbuffer';
+import {ClientConfigImpl} from '../config/Config';
 
+/** @internal */
 export const NAMESPACE_SEPARATOR = '/';
 const RINGBUFFER_PREFIX = '_hz_rb_';
 
+/** @internal */
 export class ProxyManager {
+
     public static readonly MAP_SERVICE: string = 'hz:impl:mapService';
     public static readonly SET_SERVICE: string = 'hz:impl:setService';
     public static readonly LOCK_SERVICE: string = 'hz:impl:lockService';
@@ -62,15 +65,9 @@ export class ProxyManager {
     public readonly service: { [serviceName: string]: any } = {};
     private readonly proxies = new Map<string, Promise<DistributedObject>>();
     private readonly client: HazelcastClient;
-    private readonly logger: ILogger;
-    private readonly invocationTimeoutMillis: number;
-    private readonly invocationRetryPauseMillis: number;
 
     constructor(client: HazelcastClient) {
         this.client = client;
-        this.logger = this.client.getLoggingService().getLogger();
-        this.invocationTimeoutMillis = this.client.getInvocationService().getInvocationTimeoutMillis();
-        this.invocationRetryPauseMillis = this.client.getInvocationService().getInvocationRetryPauseMillis();
     }
 
     public init(): void {
@@ -92,7 +89,7 @@ export class ProxyManager {
             return this.proxies.get(fullName);
         }
 
-        const deferred = DeferredPromise<DistributedObject>();
+        const deferred = deferredPromise<DistributedObject>();
         this.proxies.set(fullName, deferred.promise);
 
         let createProxyPromise: Promise<any>;
@@ -132,9 +129,7 @@ export class ProxyManager {
         const request = ClientCreateProxiesCodec.encodeRequest(proxyEntries);
         request.setPartitionId(-1);
         const invocation = new Invocation(this.client, request);
-        return this.client.getInvocationService()
-            .invokeUrgent(invocation)
-            .then(() => undefined);
+        return this.client.getInvocationService().invokeUrgent(invocation).then();
     }
 
     public getDistributedObjects(): Promise<DistributedObject[]> {
@@ -150,8 +145,7 @@ export class ProxyManager {
         this.proxies.delete(serviceName + NAMESPACE_SEPARATOR + name);
         const clientMessage = ClientDestroyProxyCodec.encodeRequest(name, serviceName);
         clientMessage.setPartitionId(-1);
-        return this.client.getInvocationService().invokeOnRandomTarget(clientMessage)
-            .then(() => undefined);
+        return this.client.getInvocationService().invokeOnRandomTarget(clientMessage).then();
     }
 
     public destroyProxyLocally(namespace: string): Promise<void> {
@@ -166,7 +160,7 @@ export class ProxyManager {
     }
 
     public addDistributedObjectListener(distributedObjectListener: DistributedObjectListener): Promise<string> {
-        const handler = function (clientMessage: ClientMessage): void {
+        const handler = (clientMessage: ClientMessage): void => {
             const converterFunc = (objectName: string, serviceName: string, eventType: string): void => {
                 eventType = eventType.toLowerCase();
                 const distributedObjectEvent = new DistributedObjectEvent(eventType, serviceName, objectName);
@@ -197,7 +191,7 @@ export class ProxyManager {
                 return ClientAddDistributedObjectListenerCodec.encodeRequest(localOnly);
             },
             decodeAddResponse(msg: ClientMessage): UUID {
-                return ClientAddDistributedObjectListenerCodec.decodeResponse(msg).response;
+                return ClientAddDistributedObjectListenerCodec.decodeResponse(msg);
             },
             encodeRemoveRequest(listenerId: UUID): ClientMessage {
                 return ClientRemoveDistributedObjectListenerCodec.encodeRequest(listenerId);
@@ -208,7 +202,8 @@ export class ProxyManager {
     private initializeLocalProxy(name: string, serviceName: string, createAtServer: boolean): Promise<DistributedObject> {
         let localProxy: DistributedObject;
 
-        if (serviceName === ProxyManager.MAP_SERVICE && this.client.getConfig().getNearCacheConfig(name)) {
+        const config = this.client.getConfig() as ClientConfigImpl;
+        if (serviceName === ProxyManager.MAP_SERVICE && config.getNearCacheConfig(name)) {
             localProxy = new NearCachedMapProxy(this.client, serviceName, name);
         } else {
             // This call may throw ClientOfflineError for partition specific proxies with async start
@@ -224,6 +219,5 @@ export class ProxyManager {
         } else {
             return Promise.resolve(localProxy);
         }
-
     }
 }

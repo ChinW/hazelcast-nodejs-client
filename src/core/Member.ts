@@ -14,27 +14,48 @@
  * limitations under the License.
  */
 
-import {Address} from '../Address';
+import {Address, AddressImpl} from './Address';
 import {UUID} from './UUID';
 import {MemberVersion} from './MemberVersion';
 
-export class Member {
+export interface Member {
+
     /**
      * Network address of member.
      */
     address: Address;
+
     /**
      * Unique id of member in cluster.
      */
     uuid: UUID;
+
     /**
-     * true if member is a lite member.
+     * Lite member flag.
      */
+    liteMember: boolean;
+
+    /**
+     * Returns string representation of this member.
+     */
+    toString(): string;
+
+}
+
+/** @internal */
+export class MemberImpl implements Member {
+
+    address: AddressImpl;
+    uuid: UUID;
     liteMember: boolean;
     attributes: Map<string, string>;
     version: MemberVersion;
 
-    constructor(address: Address, uuid: UUID, attributes: Map<string, string>, liteMember: boolean, version: MemberVersion) {
+    constructor(address: AddressImpl,
+                uuid: UUID,
+                attributes: Map<string, string>,
+                liteMember: boolean,
+                version: MemberVersion) {
         this.address = address;
         this.uuid = uuid;
         this.attributes = attributes;
@@ -42,15 +63,13 @@ export class Member {
         this.version = version;
     }
 
-    equals(other: Member): boolean {
+    equals(other: MemberImpl): boolean {
         if (other == null) {
             return false;
         }
-
         if (!this.address.equals(other.address)) {
             return false;
         }
-
         return this.uuid != null ? this.uuid.equals(other.uuid) : other.uuid === null;
     }
 
@@ -68,10 +87,10 @@ export class Member {
     }
 
     id(): string {
-        let hashCode = this.address.toString();
+        let id = this.address.toString();
         if (this.uuid) {
-            hashCode += this.uuid.toString();
+            id += this.uuid.toString();
         }
-        return hashCode;
+        return id;
     }
 }

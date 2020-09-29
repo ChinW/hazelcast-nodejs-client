@@ -15,11 +15,12 @@
  */
 
 /* eslint-disable max-len */
-import {ClientMessage, BEGIN_FRAME, END_FRAME} from '../../ClientMessage';
+import {ClientMessage, BEGIN_FRAME, END_FRAME} from '../../protocol/ClientMessage';
 import {CodecUtil} from '../builtin/CodecUtil';
 import {StringCodec} from '../builtin/StringCodec';
-import {DistributedObjectInfo} from '../../DistributedObjectInfo';
+import {DistributedObjectInfo} from '../../core/DistributedObjectInfo';
 
+/** @internal */
 export class DistributedObjectInfoCodec {
     static encode(clientMessage: ClientMessage, distributedObjectInfo: DistributedObjectInfo): void {
         clientMessage.addFrame(BEGIN_FRAME.copy());
@@ -33,8 +34,9 @@ export class DistributedObjectInfoCodec {
     static decode(clientMessage: ClientMessage): DistributedObjectInfo {
         // begin frame
         clientMessage.nextFrame();
-        const serviceName: string = StringCodec.decode(clientMessage);
-        const name: string = StringCodec.decode(clientMessage);
+
+        const serviceName = StringCodec.decode(clientMessage);
+        const name = StringCodec.decode(clientMessage);
 
         CodecUtil.fastForwardToEndFrame(clientMessage);
 

@@ -13,21 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+'use strict';
 
 function Address(street, zipCode, city, state) {
     this.street = street;
     this.zipCode = zipCode;
     this.city = city;
     this.state = state;
+    this.factoryId = 1;
+    this.classId = 1;
 }
-
-Address.prototype.getClassId = function () {
-    return 1;
-};
-
-Address.prototype.getFactoryId = function () {
-    return 1;
-};
 
 Address.prototype.writeData = function (objectDataOutput) {
     objectDataOutput.writeUTF(this.street);
@@ -43,15 +38,11 @@ Address.prototype.readData = function (objectDataInput) {
     this.state = objectDataInput.readUTF();
 };
 
-function MyIdentifiedFactory() {
-
-}
-
-MyIdentifiedFactory.prototype.create = function (type) {
-    if (type === 1) {
+function myIdentifiedFactory(classId) {
+    if (classId === 1) {
         return new Address();
     }
 }
 
-exports.MyIdentifiedFactory = MyIdentifiedFactory;
+exports.myIdentifiedFactory = myIdentifiedFactory;
 exports.Address = Address;

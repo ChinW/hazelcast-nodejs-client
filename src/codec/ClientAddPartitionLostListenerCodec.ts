@@ -15,9 +15,9 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
+import {BitsUtil} from '../util/BitsUtil';
 import {FixSizedTypesCodec} from './builtin/FixSizedTypesCodec';
-import {ClientMessage, Frame, RESPONSE_BACKUP_ACKS_OFFSET, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {ClientMessage, Frame, RESPONSE_BACKUP_ACKS_OFFSET, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import {UUID} from '../core/UUID';
 
 // hex: 0x000600
@@ -34,10 +34,7 @@ const EVENT_PARTITION_LOST_PARTITION_ID_OFFSET = PARTITION_ID_OFFSET + BitsUtil.
 const EVENT_PARTITION_LOST_LOST_BACKUP_COUNT_OFFSET = EVENT_PARTITION_LOST_PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 const EVENT_PARTITION_LOST_SOURCE_OFFSET = EVENT_PARTITION_LOST_LOST_BACKUP_COUNT_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
-export interface ClientAddPartitionLostListenerResponseParams {
-    response: UUID;
-}
-
+/** @internal */
 export class ClientAddPartitionLostListenerCodec {
     static encodeRequest(localOnly: boolean): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -52,12 +49,10 @@ export class ClientAddPartitionLostListenerCodec {
         return clientMessage;
     }
 
-    static decodeResponse(clientMessage: ClientMessage): ClientAddPartitionLostListenerResponseParams {
+    static decodeResponse(clientMessage: ClientMessage): UUID {
         const initialFrame = clientMessage.nextFrame();
 
-        return {
-            response: FixSizedTypesCodec.decodeUUID(initialFrame.content, RESPONSE_RESPONSE_OFFSET),
-        };
+        return FixSizedTypesCodec.decodeUUID(initialFrame.content, RESPONSE_RESPONSE_OFFSET);
     }
 
     static handle(clientMessage: ClientMessage, handlePartitionLostEvent: (partitionId: number, lostBackupCount: number, source: UUID) => void = null): void {

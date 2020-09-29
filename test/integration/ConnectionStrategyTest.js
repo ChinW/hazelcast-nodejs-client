@@ -13,227 +13,166 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 'use strict';
 
+const expect = require('chai').expect;
 const chai = require('chai');
 const chaiAsPromised = require('chai-as-promised');
 chai.use(chaiAsPromised);
 
-const expect = require('chai').expect;
-const Client = require('../../.').Client;
-const Config = require('../../.').Config;
-const Controller = require('../RC');
+const RC = require('../RC');
+const { Client, ClientOfflineError, ClientNotActiveError } = require('../../');
 const TestUtil = require('../Util');
-const Errors = require('../../.').HazelcastErrors;
-const Util = require('../../lib/Util');
-const ReconnectMode = require('../../lib/config/ConnectionStrategyConfig').ReconnectMode;
-const LifecycleState = require('../../lib/LifecycleService').LifecycleState;
+const { deferredPromise } = require('../../lib/util/Util');
+const { ReconnectMode } = require('../../lib/config/ConnectionStrategyConfig');
+const { LifecycleState } = require('../../lib/LifecycleService');
 
 describe('ConnectionStrategyTest', function () {
 
     this.timeout(32000);
-
-    let cluster;
-    let client;
-
+    let cluster, client;
 
     beforeEach(function () {
         client = null;
         cluster = null;
     });
 
-    afterEach(function () {
+    afterEach(async function () {
         if (client != null) {
-            client.shutdown();
+            await client.shutdown();
         }
-
         if (cluster != null) {
-            return Controller.terminateCluster(cluster.id);
+            await RC.terminateCluster(cluster.id);
         }
     });
 
-    it('client with async start throws when there is no cluster', function () {
-        const config = new Config.ClientConfig();
-        config.connectionStrategyConfig.asyncStart = true;
-
-        return Client.newHazelcastClient(config)
-            .then((c) => {
-                client = c;
-                return expect(client.getMap(TestUtil.randomString())).to.be.rejectedWith(Errors.ClientOfflineError);
-            });
+    it('client with async start should throw when there is no cluster', async function () {
+        client = await Client.newHazelcastClient({
+            connectionStrategy: {
+                asyncStart: true
+            }
+        });
+        await expect(client.getMap(TestUtil.randomString())).to.be.rejectedWith(ClientOfflineError);
     });
 
-    it('client with async start throws after shutdown when there is no cluster', function () {
-        const config = new Config.ClientConfig();
-        config.connectionStrategyConfig.asyncStart = true;
-
-        return Client.newHazelcastClient(config)
-            .then((c) => {
-                client = c;
-                client.shutdown();
-                return expect(client.getMap(TestUtil.randomString())).to.be.rejectedWith(Errors.ClientNotActiveError);
-            })
+    it('client with async start should throw after shutdown when there is no cluster', async function () {
+        client = await Client.newHazelcastClient({
+            connectionStrategy: {
+                asyncStart: true
+            }
+        });
+        await client.shutdown();
+        await expect(client.getMap(TestUtil.randomString())).to.be.rejectedWith(ClientNotActiveError);
     });
 
-    it('client with async start connects to cluster', function () {
-        const config = new Config.ClientConfig();
-
-        config.networkConfig.addresses.push('localhost:5701');
-
-        const connected = Util.DeferredPromise();
-        config.listeners.addLifecycleListener((state) => {
+    it('client with async start should connect to cluster', async function () {
+        const config = {
+            network: {
+                clusterMembers: ['localhost:5701']
+            },
+            lifecycleListeners: [],
+            connectionStrategy: {
+                asyncStart: true
+            }
+        };
+        const connected = deferredPromise();
+        config.lifecycleListeners.push((state) => {
             if (state === LifecycleState.CONNECTED) {
                 connected.resolve();
             }
         });
 
-        config.connectionStrategyConfig.asyncStart = true;
+        cluster = await RC.createCluster(null, null);
+        config.clusterName = cluster.id;
+        client = await Client.newHazelcastClient(config);
 
-        return Controller.createCluster(null, null)
-            .then((c) => {
-               cluster = c;
-               config.clusterName = cluster.id;
-
-               return Client.newHazelcastClient(config);
-            })
-            .then((c) => {
-               client = c;
-
-                expect(client.getLifecycleService().isRunning()).to.be.true;
-                return Controller.startMember(cluster.id);
-            })
-            .then(() => {
-                return connected.promise;
-            })
-            .then(() => {
-                return client.getMap(TestUtil.randomString());
-            });
+        expect(client.getLifecycleService().isRunning()).to.be.true;
+        await RC.startMember(cluster.id);
+        await connected.promise;
+        await client.getMap(TestUtil.randomString());
     });
 
-    it('client with OFF reconnect mode does not reconnect when the member dies and another starts', function () {
-        const config = new Config.ClientConfig();
-
-        config.connectionStrategyConfig.reconnectMode = ReconnectMode.OFF;
-        config.connectionStrategyConfig.connectionRetryConfig.clusterConnectTimeoutMillis = Number.MAX_SAFE_INTEGER;
-
-        const shutdown = Util.DeferredPromise();
-        config.listeners.addLifecycleListener((state) => {
+    it('client with OFF reconnect mode should not reconnect when member dies and another starts', async function () {
+        const config = {
+            lifecycleListeners: [],
+            connectionStrategy: {
+                reconnectMode: ReconnectMode.OFF,
+                connectionRetry: {
+                    clusterConnectTimeoutMillis: Number.MAX_SAFE_INTEGER
+                }
+            }
+        };
+        const shutdown = deferredPromise();
+        config.lifecycleListeners.push((state) => {
             if (state === LifecycleState.SHUTDOWN) {
                 shutdown.resolve();
             }
         });
 
-        let map;
-        let member;
+        cluster = await RC.createCluster(null, null);
+        config.clusterName = cluster.id;
+        const member = await RC.startMember(cluster.id);
+        client = await Client.newHazelcastClient(config);
+        const map = await client.getMap(TestUtil.randomString());
 
-        return Controller.createCluster(null, null)
-            .then((c) => {
-                cluster = c;
-                config.clusterName = cluster.id;
-                return Controller.startMember(cluster.id);
-            })
-            .then((m) => {
-                member = m;
-                return Client.newHazelcastClient(config);
-            })
-            .then((c) => {
-                client = c;
-                return client.getMap(TestUtil.randomString());
-            })
-            .then((m) => {
-                map = m;
-                // No exception at this point
-                return map.put(1, 5);
-            })
-            .then(() => {
-                return Controller.shutdownMember(cluster.id, member.uuid);
-            })
-            .then(() => {
-                return Controller.startMember(cluster.id);
-            })
-            .then(() => {
-                return shutdown.promise;
-            })
-            .then(() => {
-                return expect(map.put(1, 5)).to.be.rejectedWith(Errors.ClientNotActiveError);
-            })
+        // no exception at this point
+        await map.put(1, 5);
+
+        await RC.shutdownMember(cluster.id, member.uuid);
+        await RC.startMember(cluster.id);
+        await shutdown.promise;
+        await expect(map.put(1, 5)).to.be.rejectedWith(ClientNotActiveError);
     });
 
-    it('client with ASYNC reconnect mode reconnects when the member dies and another starts ', function () {
-        const config = new Config.ClientConfig();
-
-        config.connectionStrategyConfig.reconnectMode = ReconnectMode.ASYNC;
-        config.connectionStrategyConfig.connectionRetryConfig.clusterConnectTimeoutMillis = Number.MAX_SAFE_INTEGER;
-
-        const disconnected = Util.DeferredPromise();
-        const reconnected = Util.DeferredPromise();
-        config.listeners.addLifecycleListener((state) => {
+    it('client with ASYNC reconnect mode reconnects when the member dies and another starts ', async function () {
+        const config = {
+            lifecycleListeners: [],
+            connectionStrategy: {
+                reconnectMode: ReconnectMode.ASYNC,
+                connectionRetry: {
+                    clusterConnectTimeoutMillis: Number.MAX_SAFE_INTEGER
+                }
+            }
+        };
+        const disconnected = deferredPromise();
+        const reconnected = deferredPromise();
+        config.lifecycleListeners.push((state) => {
             if (state === LifecycleState.DISCONNECTED) {
                 disconnected.resolve();
             }
         });
 
-        let member;
-        let map;
+        cluster = await RC.createCluster(null, null)
+        config.clusterName = cluster.id;
+        const member = await RC.startMember(cluster.id);
+        client = await Client.newHazelcastClient(config);
+        const map = await client.getMap(TestUtil.randomString());
 
-        return Controller.createCluster(null, null)
-            .then((c) => {
-                cluster = c;
-                config.clusterName = cluster.id;
-                return Controller.startMember(cluster.id);
-            })
-            .then((m) => {
-                member = m;
-                return Client.newHazelcastClient(config);
-            })
-            .then((c) => {
-                client = c;
-                return client.getMap(TestUtil.randomString());
-            })
-            .then((m) => {
-                map = m;
+        // no exception at this point
+        await map.put(1, 5);
 
-                // No exception at this point
-                return map.put(1, 5);
-            })
-            .then(() => {
-                return Controller.shutdownMember(cluster.id, member.uuid);
-            })
-            .then(() => {
-                return disconnected.promise;
-            })
-            .then(() => {
-                return expect(map.put(1, 5)).to.be.rejectedWith(Errors.ClientOfflineError);
-            })
-            .then(() => {
-                client.getLifecycleService().on('lifecycleEvent', (state) => {
-                    if (state === LifecycleState.CONNECTED) {
-                        reconnected.resolve();
-                    }
-                });
+        await RC.shutdownMember(cluster.id, member.uuid);
+        await disconnected.promise;
+        await expect(map.put(1, 5)).to.be.rejectedWith(ClientOfflineError);
 
-                return Controller.startMember(cluster.id);
-            })
-            .then((m) => {
-                return reconnected.promise;
-            })
-            .then(() => {
-                expect(client.getLifecycleService().isRunning()).to.be.true;
+        client.getLifecycleService().on('lifecycleEvent', (state) => {
+            if (state === LifecycleState.CONNECTED) {
+                reconnected.resolve();
+            }
+        });
+        await RC.startMember(cluster.id);
+        await reconnected.promise;
 
-                return map.put(1, 2);
-            })
+        expect(client.getLifecycleService().isRunning()).to.be.true;
+        await map.put(1, 2);
     });
 
-    it('client with async start should should reject get partition specific proxy calls when there is no cluster', function () {
-        const config = new Config.ClientConfig();
-        config.connectionStrategyConfig.asyncStart = true;
-
-        return Client.newHazelcastClient(config)
-            .then((c) => {
-                client = c;
-                return expect(client.getList(TestUtil.randomString())).to.be.rejectedWith(Errors.ClientOfflineError);
-            });
+    it('client with async start should throw on get partition specific proxy calls when no cluster', async function () {
+        client = await Client.newHazelcastClient({
+            connectionStrategy: {
+                asyncStart: true
+            }
+        });
+        await expect(client.getList(TestUtil.randomString())).to.be.rejectedWith(ClientOfflineError);
     });
-
 });

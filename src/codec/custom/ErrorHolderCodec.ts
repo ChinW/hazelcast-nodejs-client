@@ -16,18 +16,18 @@
 
 /* eslint-disable max-len */
 import {FixSizedTypesCodec} from '../builtin/FixSizedTypesCodec';
-import {BitsUtil} from '../../BitsUtil';
-import {ClientMessage, BEGIN_FRAME, END_FRAME, Frame, DEFAULT_FLAGS} from '../../ClientMessage';
+import {BitsUtil} from '../../util/BitsUtil';
+import {ClientMessage, BEGIN_FRAME, END_FRAME, Frame, DEFAULT_FLAGS} from '../../protocol/ClientMessage';
 import {CodecUtil} from '../builtin/CodecUtil';
+import {ErrorHolder} from '../../protocol/ErrorHolder';
 import {StringCodec} from '../builtin/StringCodec';
-import {StackTraceElement} from '../../protocol/StackTraceElement';
 import {ListMultiFrameCodec} from '../builtin/ListMultiFrameCodec';
 import {StackTraceElementCodec} from './StackTraceElementCodec';
-import {ErrorHolder} from '../../protocol/ErrorHolder';
 
 const ERROR_CODE_OFFSET = 0;
 const INITIAL_FRAME_SIZE = ERROR_CODE_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
+/** @internal */
 export class ErrorHolderCodec {
     static encode(clientMessage: ClientMessage, errorHolder: ErrorHolder): void {
         clientMessage.addFrame(BEGIN_FRAME.copy());
@@ -48,10 +48,11 @@ export class ErrorHolderCodec {
         clientMessage.nextFrame();
 
         const initialFrame = clientMessage.nextFrame();
-        const errorCode: number = FixSizedTypesCodec.decodeInt(initialFrame.content, ERROR_CODE_OFFSET);
-        const className: string = StringCodec.decode(clientMessage);
-        const message: string = CodecUtil.decodeNullable(clientMessage, StringCodec.decode);
-        const stackTraceElements: StackTraceElement[] = ListMultiFrameCodec.decode(clientMessage, StackTraceElementCodec.decode);
+        const errorCode = FixSizedTypesCodec.decodeInt(initialFrame.content, ERROR_CODE_OFFSET);
+
+        const className = StringCodec.decode(clientMessage);
+        const message = CodecUtil.decodeNullable(clientMessage, StringCodec.decode);
+        const stackTraceElements = ListMultiFrameCodec.decode(clientMessage, StackTraceElementCodec.decode);
 
         CodecUtil.fastForwardToEndFrame(clientMessage);
 

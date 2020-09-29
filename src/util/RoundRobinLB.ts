@@ -13,9 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
-import {AbstractLoadBalancer} from './AbstractLoadBalancer';
-import {randomInt} from '../Util';
+import {AbstractLoadBalancer} from '../core/LoadBalancer';
+import {randomInt} from '../util/Util';
 import {Member} from '../core/Member';
 
 const INITIAL_SEED_CAP = 1 << 16;
@@ -23,6 +24,7 @@ const INITIAL_SEED_CAP = 1 << 16;
 /**
  * A {@link LoadBalancer} implementation that relies on using round robin
  * to a next member to send a request to.
+ * @internal
  */
 export class RoundRobinLB extends AbstractLoadBalancer {
     private index: number;

@@ -13,10 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
 import {StackTraceElement} from './StackTraceElement';
 
+/** @internal */
 export class ErrorHolder {
+
     errorCode: number;
     className: string;
     message: string;

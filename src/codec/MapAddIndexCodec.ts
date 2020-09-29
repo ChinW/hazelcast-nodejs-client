@@ -15,10 +15,10 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
-import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {BitsUtil} from '../util/BitsUtil';
+import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import {StringCodec} from './builtin/StringCodec';
-import {IndexConfig} from '../config/IndexConfig';
+import {InternalIndexConfig} from '../config/IndexConfig';
 import {IndexConfigCodec} from './custom/IndexConfigCodec';
 
 // hex: 0x012900
@@ -28,8 +28,9 @@ const REQUEST_MESSAGE_TYPE = 76032;
 
 const REQUEST_INITIAL_FRAME_SIZE = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
+/** @internal */
 export class MapAddIndexCodec {
-    static encodeRequest(name: string, indexConfig: IndexConfig): ClientMessage {
+    static encodeRequest(name: string, indexConfig: InternalIndexConfig): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
         clientMessage.setRetryable(false);
 

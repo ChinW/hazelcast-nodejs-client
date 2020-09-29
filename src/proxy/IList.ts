@@ -14,11 +14,13 @@
  * limitations under the License.
  */
 
-import * as Promise from 'bluebird';
-import {ItemListener} from '../core/ItemListener';
+import {ItemListener} from './ItemListener';
 import {ReadOnlyLazyList} from '../core/ReadOnlyLazyList';
-import {DistributedObject} from '../DistributedObject';
+import {DistributedObject} from '../core/DistributedObject';
 
+/**
+ * Concurrent and distributed list.
+ */
 export interface IList<E> extends DistributedObject {
 
     /**
@@ -155,10 +157,12 @@ export interface IList<E> extends DistributedObject {
     size(): Promise<number>;
 
     /**
-     * Return a view of this list that contains elements between index numbers from `start` (inclusive) to `end` (exclusive)
+     * Returns a view of this list that contains elements between index numbers from `start`
+     * (inclusive) to `end` (exclusive)
+     *
      * @param start start of the view
      * @param end end of the view
-     * @return a view of this list that contains elements between index numbers from `start` (inclusive) to `end` (exclusive)
+     * @return a view of the list
      */
     subList(start: number, end: number): Promise<ReadOnlyLazyList<E>>;
 

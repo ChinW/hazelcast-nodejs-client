@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-import {BitsUtil} from '../../BitsUtil';
-import {ClientMessage, Frame} from '../../ClientMessage';
+import {BitsUtil} from '../../util/BitsUtil';
+import {ClientMessage, Frame} from '../../protocol/ClientMessage';
 import {UUID} from '../../core/UUID';
 import {FixSizedTypesCodec} from './FixSizedTypesCodec';
 
 const ENTRY_SIZE_IN_BYTES = BitsUtil.UUID_SIZE_IN_BYTES + BitsUtil.UUID_SIZE_IN_BYTES;
 
+/** @internal */
 export class EntryListUUIDUUIDCodec {
     static encode(clientMessage: ClientMessage, entries: Array<[UUID, UUID]>): void {
         const entryCount = entries.length;

@@ -13,81 +13,68 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+'use strict';
 
-var Controller = require('./RC');
-var expect = require('chai').expect;
+const { expect, assert } = require('chai');
+const sinon = require('sinon');
+const sandbox = sinon.createSandbox();
 
-var MapProxy = require('../lib/proxy/MapProxy').MapProxy;
-var ConnectionManager = require('../lib/network/ClientConnectionManager').ClientConnectionManager;
-var ClientConnection = require('../lib/network/ClientConnection').ClientConnection;
-var HazelcastClient = require('../.').Client;
-var Config = require('../.').Config;
-var sinon = require('sinon');
-var assert = require('chai').assert;
-var sandbox = sinon.createSandbox();
+const RC = require('./RC');
+const { Client } = require('../.');
+const { MapProxy } = require('../lib/proxy/MapProxy');
+const { ClientConnectionManager } = require('../lib/network/ClientConnectionManager');
+const { ClientConnection } = require('../lib/network/ClientConnection');
 
-describe('Generic proxy test', function () {
-    var cluster;
-    var client;
-    var map;
-    var list;
+describe('ClientProxyTest', function () {
 
-    afterEach(function () {
+    let cluster;
+    let client;
+    let map;
+    let list;
+
+    afterEach(async function () {
         sandbox.restore();
         if (map && list) {
-            return map.destroy()
-                .then(function () {
-                    return list.destroy();
-                })
-                .then(function () {
-                    client.shutdown();
-                    return Controller.terminateCluster(cluster.id);
-                });
+            await map.destroy();
+            await list.destroy();
+            await client.shutdown();
+            await RC.terminateCluster(cluster.id);
         }
     });
 
     it('Client without active connection should return unknown version', function () {
-        var connectionManagerStub = sandbox.stub(ConnectionManager.prototype);
+        const connectionManagerStub = sandbox.stub(ClientConnectionManager.prototype);
         connectionManagerStub.getActiveConnections.returns({});
-        var clientStub = sandbox.stub(HazelcastClient.prototype);
+        const clientStub = sandbox.stub(Client.prototype);
         clientStub.getConnectionManager.returns(connectionManagerStub);
 
-        var mapProxy = new MapProxy(clientStub, 'mockMapService', 'mockMap');
+        const mapProxy = new MapProxy(clientStub, 'mockMapService', 'mockMap');
         assert.equal(mapProxy.getConnectedServerVersion(), -1);
     });
 
     it('Client with a 3.7 server connection should return the version', function () {
-        var connectionStub = sandbox.stub(ClientConnection.prototype);
+        const connectionStub = sandbox.stub(ClientConnection.prototype);
         connectionStub.getConnectedServerVersion.returns('30700');
-        var connectionManagerStub = sandbox.stub(ConnectionManager.prototype);
+        const connectionManagerStub = sandbox.stub(ClientConnectionManager.prototype);
         connectionManagerStub.getActiveConnections.returns({
             'localhost': connectionStub
         });
-        var clientStub = sandbox.stub(HazelcastClient.prototype);
+        const clientStub = sandbox.stub(Client.prototype);
         clientStub.getConnectionManager.returns(connectionManagerStub);
 
-        var mapProxy = new MapProxy(clientStub, 'mockMapService', 'mockMap');
+        const mapProxy = new MapProxy(clientStub, 'mockMapService', 'mockMap');
         assert.equal(mapProxy.getConnectedServerVersion(), 30700);
     });
 
-    it('Proxies with the same name should be different for different services', function () {
-        return Controller.createCluster().then(function (response) {
-            cluster = response;
-            return Controller.startMember(cluster.id);
-        }).then(function () {
-            const config = new Config.ClientConfig();
-            config.clusterName = cluster.id;
-            return HazelcastClient.newHazelcastClient(config);
-        }).then(function (res) {
-            client = res;
-            return client.getMap('Furkan').then(function (m) {
-                map = m;
-                return client.getList('Furkan');
-            }).then(function (l) {
-                list = l;
-                expect(list.getServiceName()).to.be.equal('hz:impl:listService');
-                expect(map.getServiceName()).to.be.equal('hz:impl:mapService');
-            });
-        });
+    it('Proxies with the same name should be different for different services', async function () {
+        cluster = await RC.createCluster();
+        await RC.startMember(cluster.id);
+        client = await Client.newHazelcastClient({ clusterName: cluster.id });
+
+        map = await client.getMap('Furkan');
+        list = await client.getList('Furkan');
+
+        expect(list.getServiceName()).to.be.equal('hz:impl:listService');
+        expect(map.getServiceName()).to.be.equal('hz:impl:mapService');
     });
 });

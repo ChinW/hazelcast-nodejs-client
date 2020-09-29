@@ -14,13 +14,20 @@
  * limitations under the License.
  */
 
-import * as Promise from 'bluebird';
 import * as fs from 'fs';
+import {promisify} from 'util';
 import {Properties} from '../config/Properties';
-import {HazelcastError} from '../HazelcastError';
-import {getBooleanOrUndefined, getStringOrUndefined, resolvePath} from '../Util';
+import {HazelcastError} from '../core';
+import {
+    getBooleanOrUndefined,
+    getStringOrUndefined,
+    resolvePath
+} from '../util/Util';
 import {SSLOptionsFactory} from './SSLOptionsFactory';
 
+/**
+ * Default implementation of {@link SSLOptionsFactory}.
+ */
 export class BasicSSLOptionsFactory implements SSLOptionsFactory {
 
     private servername: string;
@@ -37,7 +44,7 @@ export class BasicSSLOptionsFactory implements SSLOptionsFactory {
 
         const promises = [];
 
-        const readFile = Promise.promisify(fs.readFile);
+        const readFile = promisify(fs.readFile);
 
         const caPath = getStringOrUndefined(properties.caPath);
         const keyPath = getStringOrUndefined(properties.keyPath);

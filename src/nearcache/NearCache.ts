@@ -13,20 +13,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
 import * as Long from 'long';
 import {EvictionPolicy} from '../config/EvictionPolicy';
 import {InMemoryFormat} from '../config/InMemoryFormat';
-import {NearCacheConfig} from '../config/NearCacheConfig';
-import {DataKeyedHashMap} from '../DataStoreHashMap';
+import {NearCacheConfigImpl} from '../config/NearCacheConfig';
 import {Data} from '../serialization/Data';
 import {SerializationService} from '../serialization/SerializationService';
-import {DeferredPromise, shuffleArray} from '../Util';
-import * as AlwaysFreshStaleReadDetectorImpl from './AlwaysFreshStaleReadDetectorImpl';
+import {
+    deferredPromise,
+    DeferredPromise,
+    shuffleArray
+} from '../util/Util';
+import {DataKeyedHashMap} from './DataStoreHashMap';
 import {DataRecord} from './DataRecord';
-import {StaleReadDetector} from './StaleReadDetector';
-import * as Promise from 'bluebird';
+import {
+    StaleReadDetector,
+    alwaysFreshDetector
+} from './StaleReadDetector';
 
+/** @internal */
 export interface NearCacheStatistics {
     creationTime: number;
     evictedCount: number;
@@ -36,6 +43,7 @@ export interface NearCacheStatistics {
     entryCount: number;
 }
 
+/** @internal */
 export interface NearCache {
     put(key: Data, value: any): void;
 
@@ -60,6 +68,7 @@ export interface NearCache {
     setReady(): void;
 }
 
+/** @internal */
 export class NearCacheImpl implements NearCache {
 
     internalStore: DataKeyedHashMap<DataRecord>;
@@ -74,7 +83,7 @@ export class NearCacheImpl implements NearCache {
     private evictionSamplingCount: number;
     private evictionSamplingPoolSize: number;
     private evictionCandidatePool: DataRecord[];
-    private staleReadDetector: StaleReadDetector = AlwaysFreshStaleReadDetectorImpl.INSTANCE;
+    private staleReadDetector: StaleReadDetector = alwaysFreshDetector;
     private reservationCounter: Long = Long.ZERO;
 
     private evictedCount = 0;
@@ -83,9 +92,9 @@ export class NearCacheImpl implements NearCache {
     private hitCount = 0;
     private creationTime = Date.now();
     private compareFunc: (x: DataRecord, y: DataRecord) => number;
-    private ready: Promise.Resolver<void>;
+    private ready: DeferredPromise<void>;
 
-    constructor(nearCacheConfig: NearCacheConfig, serializationService: SerializationService) {
+    constructor(nearCacheConfig: NearCacheConfigImpl, serializationService: SerializationService) {
         this.serializationService = serializationService;
         this.name = nearCacheConfig.name;
         this.invalidateOnChange = nearCacheConfig.invalidateOnChange;
@@ -108,7 +117,7 @@ export class NearCacheImpl implements NearCache {
 
         this.evictionCandidatePool = [];
         this.internalStore = new DataKeyedHashMap<DataRecord>();
-        this.ready = DeferredPromise();
+        this.ready = deferredPromise();
     }
 
     setReady(): void {
@@ -302,7 +311,7 @@ export class NearCacheImpl implements NearCache {
     }
 
     private initInvalidationMetadata(dr: DataRecord): void {
-        if (this.staleReadDetector === AlwaysFreshStaleReadDetectorImpl.INSTANCE) {
+        if (this.staleReadDetector === alwaysFreshDetector) {
             return;
         }
         const partitionId = this.staleReadDetector.getPartitionId(dr.key);

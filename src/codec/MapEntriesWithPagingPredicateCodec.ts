@@ -15,8 +15,8 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
-import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {BitsUtil} from '../util/BitsUtil';
+import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import {StringCodec} from './builtin/StringCodec';
 import {PagingPredicateHolder} from '../protocol/PagingPredicateHolder';
 import {PagingPredicateHolderCodec} from './custom/PagingPredicateHolderCodec';
@@ -33,11 +33,13 @@ const REQUEST_MESSAGE_TYPE = 79360;
 
 const REQUEST_INITIAL_FRAME_SIZE = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
+/** @internal */
 export interface MapEntriesWithPagingPredicateResponseParams {
     response: Array<[Data, Data]>;
     anchorDataList: AnchorDataListHolder;
 }
 
+/** @internal */
 export class MapEntriesWithPagingPredicateCodec {
     static encodeRequest(name: string, predicate: PagingPredicateHolder): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -57,9 +59,10 @@ export class MapEntriesWithPagingPredicateCodec {
         // empty initial frame
         clientMessage.nextFrame();
 
-        return {
-            response: EntryListCodec.decode(clientMessage, DataCodec.decode, DataCodec.decode),
-            anchorDataList: AnchorDataListHolderCodec.decode(clientMessage),
-        };
+        const response = {} as MapEntriesWithPagingPredicateResponseParams;
+        response.response = EntryListCodec.decode(clientMessage, DataCodec.decode, DataCodec.decode);
+        response.anchorDataList = AnchorDataListHolderCodec.decode(clientMessage);
+
+        return response;
     }
 }

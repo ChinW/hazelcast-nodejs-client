@@ -13,61 +13,66 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
 import {ClientConnection} from '../network/ClientConnection';
-import * as Promise from 'bluebird';
-import {Member} from '../core/Member';
-import {ClientInfo} from '../ClientInfo';
-import HazelcastClient from '../HazelcastClient';
-import {IllegalStateError, TargetDisconnectedError} from '../HazelcastError';
+import {HazelcastClient} from '../HazelcastClient';
 import {MemberSelector} from '../core/MemberSelector';
-import {assertNotNull, DeferredPromise} from '../Util';
-import {MembershipListener} from '../core/MembershipListener';
-import {MembershipEvent} from '../core/MembershipEvent';
+import {
+    assertNotNull,
+    deferredPromise,
+    timedPromise
+} from '../util/Util';
 import {UuidUtil} from '../util/UuidUtil';
 import {ILogger} from '../logging/ILogger';
-import {UUID} from '../core/UUID';
 import {ClientConnectionManager} from '../network/ClientConnectionManager';
-import {InitialMembershipListener} from '../core/InitialMembershipListener';
-import {InitialMembershipEvent} from '../core/InitialMembershipEvent';
+import {
+    Cluster,
+    MemberImpl,
+    ClientInfo,
+    UUID,
+    MembershipListener,
+    MembershipEvent,
+    MemberEvent,
+    InitialMembershipListener,
+    InitialMembershipEvent,
+    IllegalStateError,
+    TargetDisconnectedError
+} from '../core';
 import {MemberInfo} from '../core/MemberInfo';
-import {Cluster} from '../core/Cluster';
-
-export enum MemberEvent {
-    ADDED = 1,
-    REMOVED = 2,
-}
 
 class MemberListSnapshot {
     version: number;
-    readonly members: Map<string, Member>;
-    readonly memberList: Member[];
+    readonly members: Map<string, MemberImpl>;
+    readonly memberList: MemberImpl[];
 
-    constructor(version: number, members: Map<string, Member>, memberList: Member[]) {
+    constructor(version: number, members: Map<string, MemberImpl>, memberList: MemberImpl[]) {
         this.version = version;
         this.members = members;
         this.memberList = memberList;
     }
 }
 
-const EMPTY_SNAPSHOT = new MemberListSnapshot(-1, new Map<string, Member>(), []);
+const EMPTY_SNAPSHOT = new MemberListSnapshot(-1, new Map<string, MemberImpl>(), []);
 const INITIAL_MEMBERS_TIMEOUT_IN_MILLIS = 120 * 1000; // 120 seconds
 
 /**
  * Manages the relationship of this client with the cluster.
+ * @internal
  */
 export class ClusterService implements Cluster {
+
     private client: HazelcastClient;
     private memberListSnapshot: MemberListSnapshot = EMPTY_SNAPSHOT;
     private listeners: Map<string, MembershipListener> = new Map();
     private logger: ILogger;
-    private initialListFetched = DeferredPromise<void>();
+    private initialListFetched = deferredPromise<void>();
     private connectionManager: ClientConnectionManager;
     private readonly labels: Set<string>;
 
     constructor(client: HazelcastClient) {
         this.client = client;
-        this.labels = new Set(client.getConfig().labels);
+        this.labels = new Set(client.getConfig().clientLabels);
         this.logger = client.getLoggingService().getLogger();
         this.connectionManager = client.getConnectionManager();
     }
@@ -78,26 +83,20 @@ export class ClusterService implements Cluster {
      * @param uuid The UUID of the member.
      * @return The member that was found, or undefined if not found.
      */
-    public getMember(uuid: UUID): Member {
+    getMember(uuid: UUID): MemberImpl {
         assertNotNull(uuid);
         return this.memberListSnapshot.members.get(uuid.toString());
     }
 
-    /**
-     * Returns a collection of the members that satisfy the given {@link MemberSelector}.
-     *
-     * @param selector {@link MemberSelector} instance to filter members to return
-     * @return members that satisfy the given {@link MemberSelector}.
-     */
-    public getMembers(selector?: MemberSelector): Member[] {
+    getMembers(selector?: MemberSelector): MemberImpl[] {
         const members = this.getMemberList();
         if (selector == null) {
             return members;
         }
 
-        const selectedMembers: Member[] = [];
+        const selectedMembers: MemberImpl[] = [];
         members.forEach((member) => {
-            if (selector.select(member)) {
+            if (selector(member)) {
                 selectedMembers.push(member);
             }
         });
@@ -109,14 +108,14 @@ export class ClusterService implements Cluster {
      *
      * @return The current number of members.
      */
-    public getSize(): number {
+    getSize(): number {
         return this.memberListSnapshot.members.size;
     }
 
     /**
      * @return The {@link ClientInfo} instance representing the local client.
      */
-    public getLocalClient(): ClientInfo {
+    getLocalClient(): ClientInfo {
         const connectionManager = this.client.getConnectionManager();
         const connection: ClientConnection = connectionManager.getRandomConnection();
         const localAddress = connection != null ? connection.getLocalAddress() : null;
@@ -128,15 +127,11 @@ export class ClusterService implements Cluster {
         return info;
     }
 
-    /**
-     * @param listener The listener to be registered.
-     * @return The registration ID
-     */
-    public addMembershipListener(listener: MembershipListener): UUID {
+    addMembershipListener(listener: MembershipListener): string {
         assertNotNull(listener);
 
-        const registrationId = UuidUtil.generate();
-        this.listeners.set(registrationId.toString(), listener);
+        const registrationId = UuidUtil.generate().toString();
+        this.listeners.set(registrationId, listener);
 
         if (this.isInitialMembershipListener(listener)) {
             const members = this.getMemberList();
@@ -150,43 +145,32 @@ export class ClusterService implements Cluster {
         return registrationId;
     }
 
-    /**
-     * @param registrationId The registrationId of the listener to be removed.
-     * @return true if successfully removed, false otherwise.
-     */
-    public removeMembershipListener(registrationId: UUID): boolean {
-        assertNotNull(registrationId);
-        return this.listeners.delete(registrationId.toString());
+    removeMembershipListener(listenerId: string): boolean {
+        assertNotNull(listenerId);
+        return this.listeners.delete(listenerId);
     }
 
-    public start(configuredListeners: MembershipListener[]): void {
+    start(configuredListeners: MembershipListener[]): void {
         for (const listener of configuredListeners) {
             this.addMembershipListener(listener);
         }
     }
 
-    public waitInitialMemberListFetched(): Promise<void> {
-        return this.initialListFetched.promise
-            .timeout(INITIAL_MEMBERS_TIMEOUT_IN_MILLIS)
+    waitInitialMemberListFetched(): Promise<void> {
+        return timedPromise(this.initialListFetched.promise, INITIAL_MEMBERS_TIMEOUT_IN_MILLIS)
             .catch((error) => {
                 return Promise.reject(new IllegalStateError('Could not get initial member list from the cluster!', error));
             });
     }
 
-    public clearMemberListVersion(): void {
+    clearMemberListVersion(): void {
         this.logger.trace('ClusterService', 'Resetting the member list version');
         if (this.memberListSnapshot !== EMPTY_SNAPSHOT) {
             this.memberListSnapshot.version = 0;
         }
     }
 
-    public reset(): void {
-        this.logger.trace('ClusterService', 'Resetting the cluster snapshot');
-        this.initialListFetched = DeferredPromise<void>();
-        this.memberListSnapshot = EMPTY_SNAPSHOT;
-    }
-
-    public handleMembersViewEvent(memberListVersion: number, memberInfos: MemberInfo[]): void {
+    handleMembersViewEvent(memberListVersion: number, memberInfos: MemberInfo[]): void {
         if (this.memberListSnapshot === EMPTY_SNAPSHOT) {
             this.applyInitialState(memberListVersion, memberInfos);
             this.initialListFetched.resolve();
@@ -232,10 +216,10 @@ export class ClusterService implements Cluster {
         });
     }
 
-    private detectMembershipEvents(prevMembers: Member[], currentMembers: Member[]): MembershipEvent[] {
-        const newMembers = new Array<Member>();
+    private detectMembershipEvents(prevMembers: MemberImpl[], currentMembers: MemberImpl[]): MembershipEvent[] {
+        const newMembers = new Array<MemberImpl>();
 
-        const deadMembers = new Map<string, Member>();
+        const deadMembers = new Map<string, MemberImpl>();
         for (const member of prevMembers) {
             deadMembers.set(member.id(), member);
         }
@@ -272,11 +256,11 @@ export class ClusterService implements Cluster {
     }
 
     private createSnapshot(memberListVersion: number, memberInfos: MemberInfo[]): MemberListSnapshot {
-        const newMembers = new Map<string, Member>();
-        const newMemberList = new Array<Member>(memberInfos.length);
+        const newMembers = new Map<string, MemberImpl>();
+        const newMemberList = new Array<MemberImpl>(memberInfos.length);
         let index = 0;
         for (const memberInfo of memberInfos) {
-            const member = new Member(memberInfo.address, memberInfo.uuid, memberInfo.attributes, memberInfo.liteMember,
+            const member = new MemberImpl(memberInfo.address, memberInfo.uuid, memberInfo.attributes, memberInfo.liteMember,
                 memberInfo.version);
             newMembers.set(memberInfo.uuid.toString(), member);
             newMemberList[index++] = member;
@@ -294,7 +278,7 @@ export class ClusterService implements Cluster {
         return logString;
     }
 
-    private getMemberList(): Member[] {
+    private getMemberList(): MemberImpl[] {
         return this.memberListSnapshot.memberList;
     }
 

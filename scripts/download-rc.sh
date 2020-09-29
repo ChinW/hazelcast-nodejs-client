@@ -1,11 +1,11 @@
 #!/bin/sh
-HZ_VERSION="4.0.2-SNAPSHOT"
-HZ_TEST_VERSION="4.0.2-SNAPSHOT"
+HZ_VERSION="4.0.2"
+HZ_TEST_VERSION="4.0.2"
 HAZELCAST_TEST_VERSION=${HZ_TEST_VERSION}
 HAZELCAST_VERSION=${HZ_VERSION}
 HAZELCAST_ENTERPRISE_VERSION=${HZ_VERSION}
 HAZELCAST_ENTERPRISE_TEST_VERSION=${HZ_VERSION}
-HAZELCAST_RC_VERSION="0.7-SNAPSHOT"
+HAZELCAST_RC_VERSION="0.8-SNAPSHOT"
 SNAPSHOT_REPO="https://oss.sonatype.org/content/repositories/snapshots"
 RELEASE_REPO="http://repo1.maven.apache.org/maven2"
 ENTERPRISE_RELEASE_REPO="https://repository.hazelcast.com/release/"
@@ -30,7 +30,7 @@ else
 fi
 
 if [ -f "hazelcast-remote-controller-${HAZELCAST_RC_VERSION}.jar" ]; then
-    echo "remote controller already exist, not downloading from maven."
+    echo "remote controller already exists, not downloading from maven."
 else
     echo "Downloading: remote-controller jar com.hazelcast:hazelcast-remote-controller:${HAZELCAST_RC_VERSION}"
     mvn -q dependency:get -DrepoUrl=${SNAPSHOT_REPO} -Dartifact=com.hazelcast:hazelcast-remote-controller:${HAZELCAST_RC_VERSION} -Ddest=hazelcast-remote-controller-${HAZELCAST_RC_VERSION}.jar

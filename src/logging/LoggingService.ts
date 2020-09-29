@@ -13,26 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
 import {Property} from '../config/Properties';
 import {DefaultLogger} from './DefaultLogger';
-import {ILogger} from './ILogger';
+import {ILogger, LogLevel} from './ILogger';
+import {enumFromString} from '../util/Util';
 
-export enum LogLevel {
-    OFF = -1,
-    ERROR = 0,
-    WARN = 1,
-    INFO = 2,
-    DEBUG = 3,
-    TRACE = 4,
-}
-
+/** @internal */
 export class LoggingService {
 
     private readonly logger: ILogger;
 
-    constructor(customLogger: ILogger, logLevel: number) {
+    constructor(customLogger: ILogger, level: string) {
         if (customLogger == null) {
+            const logLevel = enumFromString<LogLevel>(LogLevel, level);
             this.logger = new DefaultLogger(logLevel);
         } else if (this.isLogger(customLogger)) {
             this.logger = customLogger;
@@ -43,8 +38,9 @@ export class LoggingService {
 
     isLogger(loggingProperty: Property): loggingProperty is ILogger {
         loggingProperty = (loggingProperty as ILogger);
-        return loggingProperty.log !== undefined && loggingProperty.error !== undefined && loggingProperty.warn !== undefined &&
-            loggingProperty.info !== undefined && loggingProperty.debug !== undefined && loggingProperty.trace !== undefined;
+        return loggingProperty.log !== undefined && loggingProperty.error !== undefined
+            && loggingProperty.warn !== undefined && loggingProperty.info !== undefined
+            && loggingProperty.debug !== undefined && loggingProperty.trace !== undefined;
     }
 
     getLogger(): ILogger {

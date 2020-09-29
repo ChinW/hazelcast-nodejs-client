@@ -15,9 +15,9 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
+import {BitsUtil} from '../util/BitsUtil';
 import {FixSizedTypesCodec} from './builtin/FixSizedTypesCodec';
-import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import {StringCodec} from './builtin/StringCodec';
 import {EntryListIntegerIntegerCodec} from './builtin/EntryListIntegerIntegerCodec';
 import {Data} from '../serialization/Data';
@@ -32,11 +32,13 @@ const REQUEST_MESSAGE_TYPE = 81920;
 const REQUEST_BATCH_OFFSET = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 const REQUEST_INITIAL_FRAME_SIZE = REQUEST_BATCH_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
+/** @internal */
 export interface MapFetchWithQueryResponseParams {
     results: Data[];
     iterationPointers: Array<[number, number]>;
 }
 
+/** @internal */
 export class MapFetchWithQueryCodec {
     static encodeRequest(name: string, iterationPointers: Array<[number, number]>, batch: number, projection: Data, predicate: Data): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -59,9 +61,10 @@ export class MapFetchWithQueryCodec {
         // empty initial frame
         clientMessage.nextFrame();
 
-        return {
-            results: ListMultiFrameCodec.decodeContainsNullable(clientMessage, DataCodec.decode),
-            iterationPointers: EntryListIntegerIntegerCodec.decode(clientMessage),
-        };
+        const response = {} as MapFetchWithQueryResponseParams;
+        response.results = ListMultiFrameCodec.decodeContainsNullable(clientMessage, DataCodec.decode);
+        response.iterationPointers = EntryListIntegerIntegerCodec.decode(clientMessage);
+
+        return response;
     }
 }

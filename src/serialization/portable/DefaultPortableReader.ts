@@ -13,15 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
 import * as Long from 'long';
-import {BitsUtil} from '../../BitsUtil';
-import {IllegalStateError} from '../../HazelcastError';
+import {BitsUtil} from '../../util/BitsUtil';
+import {IllegalStateError} from '../../core';
 import {DataInput} from '../Data';
-import {Portable} from '../Serializable';
-import {ClassDefinition, FieldDefinition, FieldType} from './ClassDefinition';
-import {PortableReader, PortableSerializer} from './PortableSerializer';
+import {Portable, PortableReader, FieldType} from '../Portable';
+import {ClassDefinition, FieldDefinition} from './ClassDefinition';
+import {PortableSerializer} from './PortableSerializer';
 
+/** @internal */
 export class DefaultPortableReader implements PortableReader {
 
     protected serializer: PortableSerializer;
@@ -32,7 +34,9 @@ export class DefaultPortableReader implements PortableReader {
     private finalPos: number;
     private raw = false;
 
-    constructor(serializer: PortableSerializer, input: DataInput, classDefinition: ClassDefinition) {
+    constructor(serializer: PortableSerializer,
+                input: DataInput,
+                classDefinition: ClassDefinition) {
         this.serializer = serializer;
         this.input = input;
         this.classDefinition = classDefinition;
@@ -118,7 +122,7 @@ export class DefaultPortableReader implements PortableReader {
         }
     }
 
-    readByteArray(fieldName: string): number[] {
+    readByteArray(fieldName: string): Buffer {
         const pos = this.positionByField(fieldName, FieldType.BYTE_ARRAY);
         return this.input.readByteArray(pos);
     }

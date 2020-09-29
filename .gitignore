@@ -1,7 +1,9 @@
 target/*
 .idea/*
+.vscode/*
 node_modules/*
 *.iml
+report.xml
 
 ### Java ###
 *.class
@@ -33,7 +35,6 @@ docs/
 
 # Mac desktop service store files
 *.DS_Store
-
 
 package-lock.json
 

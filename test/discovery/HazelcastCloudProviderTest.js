@@ -13,34 +13,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+'use strict';
 
+const sinon = require('sinon');
+const expect = require('chai').expect;
 
-var IllegalStateError = require('../../').HazelcastErrors.IllegalStateError;
+const { LogLevel } = require('../../lib/');
+const { IllegalStateError } = require('../../');
+const { LoggingService } = require('../../lib/logging/LoggingService');
+const { AddressImpl } = require('../../lib/core/Address');
+const { HazelcastCloudAddressProvider } = require('../../lib/discovery/HazelcastCloudAddressProvider');
+const { HazelcastCloudDiscovery } = require('../../lib/discovery/HazelcastCloudDiscovery');
 
-var Address = require('../../lib/Address').Address;
-var sinon = require('sinon');
-var expect = require('chai').expect;
-var LoggingService = require('../../lib/logging/LoggingService').LoggingService;
-var Promise = require('bluebird');
-var LogLevel = require('../../lib/').LogLevel;
+describe('HazelcastCloudProviderTest', function () {
 
-var HazelcastCloudAddressProvider = require('../../lib/discovery/HazelcastCloudAddressProvider').HazelcastCloudAddressProvider;
-var HazelcastCloudDiscovery = require('../../lib/discovery/HazelcastCloudDiscovery').HazelcastCloudDiscovery;
-
-describe('HazelcastCloudProvider Test', function () {
-    var expectedAddresses = new Map();
-    var hazelcastCloudDiscovery;
-    var provider;
+    const expectedAddresses = new Map();
+    let hazelcastCloudDiscovery;
+    let provider;
 
     before(function () {
-        expectedAddresses.set('10.0.0.1:5701', new Address('198.51.100.1', 5701));
-        expectedAddresses.set('10.0.0.1:5702', new Address('198.51.100.1', 5702));
-        expectedAddresses.set('10.0.0.2:5701', new Address('198.51.100.2', 5701));
-
+        expectedAddresses.set('10.0.0.1:5701', new AddressImpl('198.51.100.1', 5701));
+        expectedAddresses.set('10.0.0.1:5702', new AddressImpl('198.51.100.1', 5702));
+        expectedAddresses.set('10.0.0.2:5701', new AddressImpl('198.51.100.2', 5701));
     });
 
     beforeEach(() => {
-        var logger = new LoggingService(null, LogLevel.INFO).getLogger();
+        const logger = new LoggingService(null, LogLevel.INFO).getLogger();
         hazelcastCloudDiscovery = new HazelcastCloudDiscovery();
         sinon.stub(HazelcastCloudDiscovery.prototype, 'discoverNodes').callsFake(() => Promise.resolve(expectedAddresses));
 
@@ -53,7 +51,6 @@ describe('HazelcastCloudProvider Test', function () {
             HazelcastCloudDiscovery.prototype.discoverNodes.restore();
         }
     });
-
 
     it('loadAddresses', function () {
         return provider.loadAddresses().then((res) => {
@@ -94,7 +91,7 @@ describe('HazelcastCloudProvider Test', function () {
     });
 
     it('translate_whenNotFound_thenReturnNull', function () {
-        var notAvailableAddress = new Address('127.0.0.3', 5701);
+        const notAvailableAddress = new AddressImpl('127.0.0.3', 5701);
         return provider.translate(notAvailableAddress).then((res) => {
             return expect(res).to.be.null;
         });

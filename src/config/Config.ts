@@ -14,71 +14,185 @@
  * limitations under the License.
  */
 
-import {TopicOverloadPolicy} from '../proxy/topic/TopicOverloadPolicy';
-import {ClientNetworkConfig} from './ClientNetworkConfig';
+import {ClientNetworkConfig, ClientNetworkConfigImpl} from './ClientNetworkConfig';
 import {ConfigPatternMatcher} from './ConfigPatternMatcher';
-import {EvictionPolicy} from './EvictionPolicy';
-import {FlakeIdGeneratorConfig} from './FlakeIdGeneratorConfig';
-import {ImportConfig, ListenerImportConfig} from './ImportConfig';
-import {InMemoryFormat} from './InMemoryFormat';
-import {ListenerConfig} from './ListenerConfig';
-import {NearCacheConfig} from './NearCacheConfig';
-import {SSLConfig} from './SSLConfig';
+import {FlakeIdGeneratorConfig, FlakeIdGeneratorConfigImpl} from './FlakeIdGeneratorConfig';
+import {MembershipListener} from '../core/MembershipListener';
+import {LifecycleState} from '../LifecycleService';
+import {NearCacheConfig, NearCacheConfigImpl} from './NearCacheConfig';
 import {Properties} from './Properties';
-import {ReliableTopicConfig} from './ReliableTopicConfig';
-import {SerializationConfig} from './SerializationConfig';
+import {ReliableTopicConfig, ReliableTopicConfigImpl} from './ReliableTopicConfig';
+import {SerializationConfig, SerializationConfigImpl} from './SerializationConfig';
 import {Statistics} from '../statistics/Statistics';
-import {LogLevel} from '..';
 import {ILogger} from '../logging/ILogger';
-import {JsonStringDeserializationPolicy} from './JsonStringDeserializationPolicy';
-import {ConnectionStrategyConfig, ReconnectMode} from './ConnectionStrategyConfig';
-import {LoadBalancer} from '../LoadBalancer';
-import {IndexConfig} from './IndexConfig';
-import {IndexType} from './IndexType';
-import {ConnectionRetryConfig} from './ConnectionRetryConfig';
-
-const DEFAULT_CLUSTER_NAME = 'dev';
+import {ConnectionStrategyConfig, ConnectionStrategyConfigImpl} from './ConnectionStrategyConfig';
+import {LoadBalancerConfig, LoadBalancerConfigImpl} from './LoadBalancerConfig';
 
 /**
- * Top level configuration object of Hazelcast client. Other configurations items are properties of this object.
+ * Top level configuration object of Hazelcast client.
+ * Other configurations items are properties of this object.
  */
-export class ClientConfig {
+export interface ClientConfig {
+
+    /**
+     * Name of the cluster to connect to. By default, set to `dev`.
+     */
+    clusterName?: string;
+
+    /**
+     * Name of the client instance. By default, set to `hz.client_${CLIENT_ID}`,
+     * where `CLIENT_ID` starts from `0` and it is incremented by `1`
+     * for each new client.
+     */
+    instanceName?: string;
+
+    /**
+     * Labels for the client to be sent to the cluster.
+     */
+    clientLabels?: string[];
+
+    /**
+     * Network config of the client.
+     */
+    network?: ClientNetworkConfig;
+
+    /**
+     * Connection strategy config of the client.
+     */
+    connectionStrategy?: ConnectionStrategyConfig;
+
+    /**
+     * Load balancer config for the client.
+     */
+    loadBalancer?: LoadBalancerConfig;
+
+    /**
+     * Lifecycle listeners to be attached to the client.
+     */
+    lifecycleListeners?: Array<(state: LifecycleState) => void>;
+
+    /**
+     * Membership listeners to be attached to the client.
+     */
+    membershipListeners?: MembershipListener[];
+
+    /**
+     * User-defined serialization config for the client.
+     */
+    serialization?: SerializationConfig;
+
+    /**
+     * Near Cache config for the client.
+     *
+     * Hazelcast client supports wildcard configuration for Near
+     * Caches. Using an asterisk (`*`) character in the name,
+     * different instances of Maps can be configured by a single
+     * configuration.
+     *
+     * When you use `default` as the config key, it has a special
+     * meaning. Hazelcast client will use that configuration as the
+     * default one for all Maps, unless there is a specific
+     * configuration for the Map.
+     */
+    nearCaches?: { [name: string]: NearCacheConfig };
+
+    /**
+     * Configs for Reliable Topics.
+     *
+     * Hazelcast client supports wildcard configuration for Reliable
+     * Topics. Using an asterisk (`*`) character in the name,
+     * different instances of topics can be configured by a single
+     * configuration.
+     *
+     * When you use `default` as the config key, it has a special
+     * meaning. Hazelcast client will use that configuration as the
+     * default one for all Reliable Topics, unless there is
+     * a specific configuration for the topic.
+     */
+    reliableTopics?: { [name: string]: ReliableTopicConfig };
+
+    /**
+     * Configs for Flake ID Generators.
+     *
+     * Hazelcast client supports wildcard configuration for Flake
+     * ID Generators. Using an asterisk (`*`) character in the name,
+     * different instances of generators can be configured by a single
+     * configuration.
+     *
+     * When you use `default` as the config key, it has a special
+     * meaning. Hazelcast client will use that configuration as the
+     * default one for all Flake ID Generators, unless there is
+     * a specific configuration for the generator.
+     */
+    flakeIdGenerators?: { [name: string]: FlakeIdGeneratorConfig };
+
+    /**
+     * Custom logger implementation for the client.
+     */
+    customLogger?: ILogger;
+
+    /**
+     * Custom credentials to be used as a part of authentication on
+     * the cluster.
+     */
+    customCredentials?: any;
+
+    /**
+     * Enables client to get backup acknowledgements directly from
+     * the member that backups are applied, which reduces number of hops
+     * and increases performance for smart clients.
+     *
+     * Enabled by default for smart clients. This option has no effect
+     * for unisocket clients.
+     */
+    backupAckToClientEnabled?: boolean;
+
+    /**
+     * User-defined properties.
+     */
+    properties?: Properties;
+
+}
+
+/** @internal */
+export class ClientConfigImpl implements ClientConfig {
 
     properties: Properties = {
         'hazelcast.client.heartbeat.interval': 5000,
         'hazelcast.client.heartbeat.timeout': 60000,
         'hazelcast.client.invocation.retry.pause.millis': 1000,
         'hazelcast.client.invocation.timeout.millis': 120000,
+        'hazelcast.client.internal.clean.resources.millis': 100,
         'hazelcast.client.cloud.url': 'https://coordinator.hazelcast.cloud',
         'hazelcast.client.statistics.enabled': false,
         'hazelcast.client.statistics.period.seconds': Statistics.PERIOD_SECONDS_DEFAULT_VALUE,
         'hazelcast.invalidation.reconciliation.interval.seconds': 60,
         'hazelcast.invalidation.max.tolerated.miss.count': 10,
         'hazelcast.invalidation.min.reconciliation.interval.seconds': 30,
-        'hazelcast.logging.level': LogLevel.INFO,
+        'hazelcast.logging.level': 'INFO',
         'hazelcast.client.autopipelining.enabled': true,
         'hazelcast.client.autopipelining.threshold.bytes': 8192,
         'hazelcast.client.socket.no.delay': true,
         'hazelcast.client.shuffle.member.list': true,
+        'hazelcast.client.operation.backup.timeout.millis': 5000,
+        'hazelcast.client.operation.fail.on.indeterminate.state': false,
     };
 
-    /**
-     * Name of this client instance.
-     */
     instanceName: string;
-    networkConfig: ClientNetworkConfig = new ClientNetworkConfig();
-    customLogger: ILogger;
+    network = new ClientNetworkConfigImpl();
+    customLogger: ILogger = null;
     customCredentials: any = null;
-    listeners: ListenerConfig = new ListenerConfig();
-    listenerConfigs: ListenerImportConfig[] = [];
-    serializationConfig: SerializationConfig = new SerializationConfig();
-    reliableTopicConfigs: { [name: string]: ReliableTopicConfig } = {};
-    nearCacheConfigs: { [name: string]: NearCacheConfig } = {};
-    flakeIdGeneratorConfigs: { [name: string]: FlakeIdGeneratorConfig } = {};
-    connectionStrategyConfig: ConnectionStrategyConfig = new ConnectionStrategyConfig();
-    clusterName: string = DEFAULT_CLUSTER_NAME;
-    labels = new Set<string>();
-    loadBalancer: LoadBalancer;
+    lifecycleListeners: Array<(state: LifecycleState) => void> = [];
+    membershipListeners: MembershipListener[] = [];
+    serialization = new SerializationConfigImpl();
+    reliableTopics: { [name: string]: ReliableTopicConfigImpl } = {};
+    nearCaches: { [name: string]: NearCacheConfigImpl } = {};
+    flakeIdGenerators: { [name: string]: FlakeIdGeneratorConfigImpl } = {};
+    connectionStrategy = new ConnectionStrategyConfigImpl();
+    clusterName = 'dev';
+    clientLabels: string[] = [];
+    loadBalancer = new LoadBalancerConfigImpl();
+    backupAckToClientEnabled = true;
 
     private configPatternMatcher = new ConfigPatternMatcher();
 
@@ -86,20 +200,20 @@ export class ClientConfig {
         return this.instanceName;
     }
 
-    getReliableTopicConfig(name: string): ReliableTopicConfig {
-        const matching = this.lookupByPattern<ReliableTopicConfig>(this.reliableTopicConfigs, name);
-        let config: ReliableTopicConfig;
+    getReliableTopicConfig(name: string): ReliableTopicConfigImpl {
+        const matching = this.lookupByPattern<ReliableTopicConfigImpl>(this.reliableTopics, name);
+        let config: ReliableTopicConfigImpl;
         if (matching != null) {
             config = matching.clone();
         } else {
-            config = new ReliableTopicConfig();
+            config = new ReliableTopicConfigImpl();
         }
         config.name = name;
         return config;
     }
 
-    getNearCacheConfig(name: string): NearCacheConfig {
-        const matching = this.lookupByPattern<NearCacheConfig>(this.nearCacheConfigs, name);
+    getNearCacheConfig(name: string): NearCacheConfigImpl {
+        const matching = this.lookupByPattern<NearCacheConfigImpl>(this.nearCaches, name);
         if (matching == null) {
             return null;
         }
@@ -108,13 +222,14 @@ export class ClientConfig {
         return config;
     }
 
-    getFlakeIdGeneratorConfig(name: string): FlakeIdGeneratorConfig {
-        const matching: FlakeIdGeneratorConfig = this.lookupByPattern<FlakeIdGeneratorConfig>(this.flakeIdGeneratorConfigs, name);
-        let config: FlakeIdGeneratorConfig;
+    getFlakeIdGeneratorConfig(name: string): FlakeIdGeneratorConfigImpl {
+        const matching: FlakeIdGeneratorConfigImpl =
+            this.lookupByPattern<FlakeIdGeneratorConfigImpl>(this.flakeIdGenerators, name);
+        let config: FlakeIdGeneratorConfigImpl;
         if (matching != null) {
             config = matching.clone();
         } else {
-            config = new FlakeIdGeneratorConfig();
+            config = new FlakeIdGeneratorConfigImpl();
         }
         config.name = name;
         return config;
@@ -134,35 +249,3 @@ export class ClientConfig {
         return null;
     }
 }
-
-export {ClientNetworkConfig};
-
-export {TopicOverloadPolicy};
-
-export {SerializationConfig};
-
-export {ReliableTopicConfig};
-
-export {EvictionPolicy};
-
-export {InMemoryFormat};
-
-export {NearCacheConfig};
-
-export {ImportConfig};
-
-export {FlakeIdGeneratorConfig};
-
-export {SSLConfig};
-
-export {JsonStringDeserializationPolicy};
-
-export {IndexConfig};
-
-export {IndexType};
-
-export {ConnectionStrategyConfig};
-
-export {ReconnectMode};
-
-export {ConnectionRetryConfig};

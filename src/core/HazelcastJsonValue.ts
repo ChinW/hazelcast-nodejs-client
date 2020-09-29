@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import {assertString} from '../Util';
+import {assertString} from '../util/Util';
 
 /**
  * HazelcastJsonValue is a wrapper for JSON formatted strings. It is preferred
@@ -23,7 +23,6 @@ import {assertString} from '../Util';
  * JSON strings.
  *
  * HazelcastJsonValue is queried using Hazelcast's querying language.
- * See {@link https://github.com/hazelcast/hazelcast-nodejs-client#77-distributed-query Distributed Query section}.
  *
  * In terms of querying, numbers in JSON strings are treated as either
  * Long or Double in the Java side. Strings, booleans and null
@@ -33,7 +32,7 @@ import {assertString} from '../Util';
  * checked for being valid. Ill-formatted json strings may cause false
  * positive or false negative results in queries.
  *
- * Null values are not allowed.
+ * Important note: `null` values are not allowed.
  */
 export class HazelcastJsonValue {
 

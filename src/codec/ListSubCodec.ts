@@ -15,9 +15,9 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
+import {BitsUtil} from '../util/BitsUtil';
 import {FixSizedTypesCodec} from './builtin/FixSizedTypesCodec';
-import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import {StringCodec} from './builtin/StringCodec';
 import {Data} from '../serialization/Data';
 import {ListMultiFrameCodec} from './builtin/ListMultiFrameCodec';
@@ -32,10 +32,7 @@ const REQUEST_FROM_OFFSET = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 const REQUEST_TO_OFFSET = REQUEST_FROM_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 const REQUEST_INITIAL_FRAME_SIZE = REQUEST_TO_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
-export interface ListSubResponseParams {
-    response: Data[];
-}
-
+/** @internal */
 export class ListSubCodec {
     static encodeRequest(name: string, from: number, to: number): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -52,12 +49,10 @@ export class ListSubCodec {
         return clientMessage;
     }
 
-    static decodeResponse(clientMessage: ClientMessage): ListSubResponseParams {
+    static decodeResponse(clientMessage: ClientMessage): Data[] {
         // empty initial frame
         clientMessage.nextFrame();
 
-        return {
-            response: ListMultiFrameCodec.decode(clientMessage, DataCodec.decode),
-        };
+        return ListMultiFrameCodec.decode(clientMessage, DataCodec.decode);
     }
 }

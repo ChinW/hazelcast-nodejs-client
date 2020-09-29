@@ -15,9 +15,9 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
+import {BitsUtil} from '../util/BitsUtil';
 import {FixSizedTypesCodec} from './builtin/FixSizedTypesCodec';
-import {ClientMessage, Frame, RESPONSE_BACKUP_ACKS_OFFSET, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {ClientMessage, Frame, RESPONSE_BACKUP_ACKS_OFFSET, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import {StringCodec} from './builtin/StringCodec';
 import * as Long from 'long';
 
@@ -32,12 +32,14 @@ const RESPONSE_BASE_OFFSET = RESPONSE_BACKUP_ACKS_OFFSET + BitsUtil.BYTE_SIZE_IN
 const RESPONSE_INCREMENT_OFFSET = RESPONSE_BASE_OFFSET + BitsUtil.LONG_SIZE_IN_BYTES;
 const RESPONSE_BATCH_SIZE_OFFSET = RESPONSE_INCREMENT_OFFSET + BitsUtil.LONG_SIZE_IN_BYTES;
 
+/** @internal */
 export interface FlakeIdGeneratorNewIdBatchResponseParams {
     base: Long;
     increment: Long;
     batchSize: number;
 }
 
+/** @internal */
 export class FlakeIdGeneratorNewIdBatchCodec {
     static encodeRequest(name: string, batchSize: number): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -56,10 +58,11 @@ export class FlakeIdGeneratorNewIdBatchCodec {
     static decodeResponse(clientMessage: ClientMessage): FlakeIdGeneratorNewIdBatchResponseParams {
         const initialFrame = clientMessage.nextFrame();
 
-        return {
-            base: FixSizedTypesCodec.decodeLong(initialFrame.content, RESPONSE_BASE_OFFSET),
-            increment: FixSizedTypesCodec.decodeLong(initialFrame.content, RESPONSE_INCREMENT_OFFSET),
-            batchSize: FixSizedTypesCodec.decodeInt(initialFrame.content, RESPONSE_BATCH_SIZE_OFFSET),
-        };
+        const response = {} as FlakeIdGeneratorNewIdBatchResponseParams;
+        response.base = FixSizedTypesCodec.decodeLong(initialFrame.content, RESPONSE_BASE_OFFSET);
+        response.increment = FixSizedTypesCodec.decodeLong(initialFrame.content, RESPONSE_INCREMENT_OFFSET);
+        response.batchSize = FixSizedTypesCodec.decodeInt(initialFrame.content, RESPONSE_BATCH_SIZE_OFFSET);
+
+        return response;
     }
 }

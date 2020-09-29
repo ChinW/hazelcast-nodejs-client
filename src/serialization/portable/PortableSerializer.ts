@@ -13,41 +13,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
-import {SerializationService, Serializer} from '../SerializationService';
 import {PortableContext} from './PortableContext';
-import {Portable, PortableFactory} from '../Serializable';
+import {Portable, PortableFactory} from '../Portable';
+import {Serializer} from '../Serializable';
 import {DataInput, PositionalDataOutput} from '../Data';
 import {DefaultPortableReader} from './DefaultPortableReader';
 import {MorphingPortableReader} from './MorphingPortableReader';
-import {ClassDefinition, FieldType} from './ClassDefinition';
+import {ClassDefinition} from './ClassDefinition';
 import {DefaultPortableWriter} from './DefaultPortableWriter';
-import * as Long from 'long';
-import {SerializationConfig} from '../../config/SerializationConfig';
-import {HazelcastSerializationError} from '../../HazelcastError';
-import * as Util from '../../Util';
+import {SerializationConfigImpl} from '../../config/SerializationConfig';
+import {HazelcastSerializationError} from '../../core';
 
+/** @internal */
 export class PortableSerializer implements Serializer {
 
-    private portableContext: PortableContext;
-    private factories: { [id: number]: PortableFactory };
-    private service: SerializationService;
+    id = -1;
+    private readonly portableContext: PortableContext;
+    private readonly factories: { [id: number]: PortableFactory };
 
-    constructor(service: SerializationService, serializationConfig: SerializationConfig) {
-        this.service = service;
-        this.portableContext = new PortableContext(this.service, serializationConfig.portableVersion);
+    constructor(serializationConfig: SerializationConfigImpl) {
+        this.portableContext = new PortableContext(serializationConfig.portableVersion);
         this.factories = serializationConfig.portableFactories;
-        const factoryConfigs = serializationConfig.portableFactoryConfigs;
-        for (const id in factoryConfigs) {
-            const exportedName = factoryConfigs[id].exportedName;
-            const path = factoryConfigs[id].path;
-            const factoryConstructor = Util.loadNameFromPath(path, exportedName);
-            this.factories[id] = new factoryConstructor();
-        }
-    }
-
-    getId(): number {
-        return -1;
     }
 
     read(input: DataInput): any {
@@ -81,8 +69,8 @@ export class PortableSerializer implements Serializer {
     }
 
     write(output: PositionalDataOutput, object: Portable): void {
-        output.writeInt(object.getFactoryId());
-        output.writeInt(object.getClassId());
+        output.writeInt(object.factoryId);
+        output.writeInt(object.classId);
 
         this.writeObject(output, object);
     }
@@ -97,108 +85,14 @@ export class PortableSerializer implements Serializer {
     }
 
     private createNewPortableInstance(factoryId: number, classId: number): Portable {
-        const factory = this.factories[factoryId];
-        if (factory == null) {
+        const factoryFn = this.factories[factoryId];
+        if (factoryFn == null) {
             throw new HazelcastSerializationError(`There is no suitable portable factory for ${factoryId}.`);
         }
-        const portable: Portable = factory.create(classId);
+        const portable: Portable = factoryFn(classId);
         if (portable == null) {
             throw new HazelcastSerializationError(`Could not create Portable for class-id: ${classId}`);
         }
         return portable;
     }
-}
-
-export interface PortableWriter {
-    writeInt(fieldName: string, value: number): void;
-
-    writeLong(fieldName: string, long: Long): void;
-
-    writeUTF(fieldName: string, str: string): void;
-
-    writeBoolean(fieldName: string, value: boolean): void;
-
-    writeByte(fieldName: string, value: number): void;
-
-    writeChar(fieldName: string, char: string): void;
-
-    writeDouble(fieldName: string, double: number): void;
-
-    writeFloat(fieldName: string, float: number): void;
-
-    writeShort(fieldName: string, value: number): void;
-
-    writePortable(fieldName: string, portable: Portable): void;
-
-    writeNullPortable(fieldName: string, factoryId: number, classId: number): void;
-
-    writeByteArray(fieldName: string, bytes: number[]): void;
-
-    writeBooleanArray(fieldName: string, booleans: boolean[]): void;
-
-    writeCharArray(fieldName: string, chars: string[]): void;
-
-    writeIntArray(fieldName: string, ints: number[]): void;
-
-    writeLongArray(fieldName: string, longs: Long[]): void;
-
-    writeDoubleArray(fieldName: string, doubles: number[]): void;
-
-    writeFloatArray(fieldName: string, floats: number[]): void;
-
-    writeShortArray(fieldName: string, shorts: number[]): void;
-
-    writeUTFArray(fieldName: string, val: string[]): void;
-
-    writePortableArray(fieldName: string, portables: Portable[]): void;
-}
-
-export interface PortableReader {
-    getVersion(): number;
-
-    hasField(fieldName: string): boolean;
-
-    getFieldNames(): string[];
-
-    getFieldType(fieldName: string): FieldType;
-
-    readInt(fieldName: string): number;
-
-    readLong(fieldName: string): Long;
-
-    readUTF(fieldName: string): string;
-
-    readBoolean(fieldName: string): boolean;
-
-    readByte(fieldName: string): number;
-
-    readChar(fieldName: string): string;
-
-    readDouble(fieldName: string): number;
-
-    readFloat(fieldName: string): number;
-
-    readShort(fieldName: string): number;
-
-    readPortable(fieldName: string): Portable;
-
-    readByteArray(fieldName: string): number[];
-
-    readBooleanArray(fieldName: string): boolean[];
-
-    readCharArray(fieldName: string): string[];
-
-    readIntArray(fieldName: string): number[];
-
-    readLongArray(fieldName: string): Long[];
-
-    readDoubleArray(fieldName: string): number[];
-
-    readFloatArray(fieldName: string): number[];
-
-    readShortArray(fieldName: string): number[];
-
-    readUTFArray(fieldName: string): string[];
-
-    readPortableArray(fieldName: string): Portable[];
 }

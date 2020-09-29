@@ -13,29 +13,37 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
-import * as Promise from 'bluebird';
-import {OverflowPolicy} from '../../core/OverflowPolicy';
-import HazelcastClient from '../../HazelcastClient';
-import {TopicOverloadError} from '../../HazelcastError';
-import {Address} from '../../index';
+import * as Long from 'long';
+import {OverflowPolicy} from '../OverflowPolicy';
+import {HazelcastClient} from '../../HazelcastClient';
+import {TopicOverloadError} from '../../core';
+import {AddressImpl} from '../../core/Address';
 import {SerializationService} from '../../serialization/SerializationService';
 import {UuidUtil} from '../../util/UuidUtil';
+import {
+    deferredPromise,
+    DeferredPromise
+} from '../../util/Util';
 import {BaseProxy} from '../BaseProxy';
 import {Ringbuffer} from '../Ringbuffer';
-import {ITopic} from './ITopic';
+import {ITopic} from '../ITopic';
 import {ReliableTopicMessage} from './ReliableTopicMessage';
 import {ReliableTopicListenerRunner} from './ReliableTopicListenerRunner';
-import {MessageListener} from './MessageListener';
-import {TopicOverloadPolicy} from './TopicOverloadPolicy';
-import Long = require('long');
+import {MessageListener} from '../MessageListener';
+import {TopicOverloadPolicy} from '../TopicOverloadPolicy';
+import {ClientConfigImpl} from '../../config/Config';
 
+/** @internal */
 export const TOPIC_INITIAL_BACKOFF = 100;
+/** @internal */
 export const TOPIC_MAX_BACKOFF = 2000;
 
+/** @internal */
 export class ReliableTopicProxy<E> extends BaseProxy implements ITopic<E> {
     private ringbuffer: Ringbuffer<ReliableTopicMessage>;
-    private readonly localAddress: Address;
+    private readonly localAddress: AddressImpl;
     private readonly batchSize: number;
     private readonly runners: { [key: string]: ReliableTopicListenerRunner<E> } = {};
     private readonly serializationService: SerializationService;
@@ -43,12 +51,11 @@ export class ReliableTopicProxy<E> extends BaseProxy implements ITopic<E> {
 
     constructor(client: HazelcastClient, serviceName: string, name: string) {
         super(client, serviceName, name);
-        this.localAddress = client.getClusterService().getLocalClient().localAddress;
-        const config = client.getConfig().getReliableTopicConfig(name);
+        this.localAddress = client.getClusterService().getLocalClient().localAddress as AddressImpl;
+        const config = (client.getConfig() as ClientConfigImpl).getReliableTopicConfig(name);
         this.batchSize = config.readBatchSize;
         this.overloadPolicy = config.overloadPolicy;
         this.serializationService = client.getSerializationService();
-        this.name = name;
     }
 
     setRingbuffer(ringbuffer: Ringbuffer<ReliableTopicMessage>): void {
@@ -71,16 +78,14 @@ export class ReliableTopicProxy<E> extends BaseProxy implements ITopic<E> {
         return listenerId;
     }
 
-    removeMessageListener(id: string): boolean {
-        const runner = this.runners[id];
-
+    removeMessageListener(listenerId: string): boolean {
+        const runner = this.runners[listenerId];
         if (!runner) {
             return false;
         }
 
         runner.cancel();
-
-        delete this.runners[id];
+        delete this.runners[listenerId];
 
         return true;
     }
@@ -114,7 +119,6 @@ export class ReliableTopicProxy<E> extends BaseProxy implements ITopic<E> {
             const runner = this.runners[k];
             runner.cancel();
         }
-
         return this.ringbuffer.destroy();
     }
 
@@ -130,7 +134,6 @@ export class ReliableTopicProxy<E> extends BaseProxy implements ITopic<E> {
                 throw new TopicOverloadError('Failed to publish message: ' + reliableTopicMessage +
                     ' on topic: ' + this.getName());
             }
-
             return null;
         });
     }
@@ -142,33 +145,23 @@ export class ReliableTopicProxy<E> extends BaseProxy implements ITopic<E> {
     }
 
     private addWithBackoff(reliableTopicMessage: ReliableTopicMessage): Promise<void> {
-
-        let resolve: Function;
-
-        const promise = new Promise<void>(function (): void {
-            resolve = arguments[0];
-        });
-
-        this.trySendMessage(reliableTopicMessage, TOPIC_INITIAL_BACKOFF, resolve);
-
-        return promise;
+        const deferred = deferredPromise<void>();
+        this.trySendMessage(reliableTopicMessage, TOPIC_INITIAL_BACKOFF, deferred);
+        return deferred.promise;
     }
 
-    private trySendMessage(message: ReliableTopicMessage, delay: number, resolve: Function): void {
+    private trySendMessage(message: ReliableTopicMessage, delay: number, deferred: DeferredPromise<void>): void {
         this.ringbuffer.add(message, OverflowPolicy.FAIL).then((seq: Long) => {
             if (seq.toNumber() === -1) {
                 let newDelay = delay *= 2;
-
                 if (newDelay > TOPIC_MAX_BACKOFF) {
                     newDelay = TOPIC_MAX_BACKOFF;
                 }
-
-                this.trySendMessage(message, newDelay, resolve);
+                this.trySendMessage(message, newDelay, deferred);
             } else {
-                resolve();
+                deferred.resolve();
             }
-
-        });
+        }).catch(deferred.reject);
     }
 
 }

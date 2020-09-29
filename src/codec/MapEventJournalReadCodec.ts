@@ -15,9 +15,9 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
+import {BitsUtil} from '../util/BitsUtil';
 import {FixSizedTypesCodec} from './builtin/FixSizedTypesCodec';
-import {ClientMessage, Frame, RESPONSE_BACKUP_ACKS_OFFSET, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {ClientMessage, Frame, RESPONSE_BACKUP_ACKS_OFFSET, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import * as Long from 'long';
 import {StringCodec} from './builtin/StringCodec';
 import {Data} from '../serialization/Data';
@@ -38,6 +38,7 @@ const REQUEST_INITIAL_FRAME_SIZE = REQUEST_MAX_SIZE_OFFSET + BitsUtil.INT_SIZE_I
 const RESPONSE_READ_COUNT_OFFSET = RESPONSE_BACKUP_ACKS_OFFSET + BitsUtil.BYTE_SIZE_IN_BYTES;
 const RESPONSE_NEXT_SEQ_OFFSET = RESPONSE_READ_COUNT_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
+/** @internal */
 export interface MapEventJournalReadResponseParams {
     readCount: number;
     items: Data[];
@@ -45,6 +46,7 @@ export interface MapEventJournalReadResponseParams {
     nextSeq: Long;
 }
 
+/** @internal */
 export class MapEventJournalReadCodec {
     static encodeRequest(name: string, startSequence: Long, minSize: number, maxSize: number, predicate: Data, projection: Data): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -67,11 +69,12 @@ export class MapEventJournalReadCodec {
     static decodeResponse(clientMessage: ClientMessage): MapEventJournalReadResponseParams {
         const initialFrame = clientMessage.nextFrame();
 
-        return {
-            readCount: FixSizedTypesCodec.decodeInt(initialFrame.content, RESPONSE_READ_COUNT_OFFSET),
-            nextSeq: FixSizedTypesCodec.decodeLong(initialFrame.content, RESPONSE_NEXT_SEQ_OFFSET),
-            items: ListMultiFrameCodec.decode(clientMessage, DataCodec.decode),
-            itemSeqs: CodecUtil.decodeNullable(clientMessage, LongArrayCodec.decode),
-        };
+        const response = {} as MapEventJournalReadResponseParams;
+        response.readCount = FixSizedTypesCodec.decodeInt(initialFrame.content, RESPONSE_READ_COUNT_OFFSET);
+        response.nextSeq = FixSizedTypesCodec.decodeLong(initialFrame.content, RESPONSE_NEXT_SEQ_OFFSET);
+        response.items = ListMultiFrameCodec.decode(clientMessage, DataCodec.decode);
+        response.itemSeqs = CodecUtil.decodeNullable(clientMessage, LongArrayCodec.decode);
+
+        return response;
     }
 }

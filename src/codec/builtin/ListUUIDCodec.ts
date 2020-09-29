@@ -14,11 +14,12 @@
  * limitations under the License.
  */
 
-import {ClientMessage, Frame} from '../../ClientMessage';
+import {ClientMessage, Frame} from '../../protocol/ClientMessage';
 import {UUID} from '../../core/UUID';
-import {BitsUtil} from '../../BitsUtil';
+import {BitsUtil} from '../../util/BitsUtil';
 import {FixSizedTypesCodec} from './FixSizedTypesCodec';
 
+/** @internal */
 export class ListUUIDCodec {
     static encode(clientMessage: ClientMessage, list: UUID[]): void {
         const itemCount = list.length;

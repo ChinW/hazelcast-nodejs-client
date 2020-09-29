@@ -15,8 +15,8 @@
  */
 
 /* eslint-disable max-len */
-import {BitsUtil} from '../BitsUtil';
-import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../ClientMessage';
+import {BitsUtil} from '../util/BitsUtil';
+import {ClientMessage, Frame, PARTITION_ID_OFFSET} from '../protocol/ClientMessage';
 import {StringCodec} from './builtin/StringCodec';
 import {Data} from '../serialization/Data';
 import {DataCodec} from './builtin/DataCodec';
@@ -29,10 +29,7 @@ const REQUEST_MESSAGE_TYPE = 80896;
 
 const REQUEST_INITIAL_FRAME_SIZE = PARTITION_ID_OFFSET + BitsUtil.INT_SIZE_IN_BYTES;
 
-export interface MapProjectWithPredicateResponseParams {
-    response: Data[];
-}
-
+/** @internal */
 export class MapProjectWithPredicateCodec {
     static encodeRequest(name: string, projection: Data, predicate: Data): ClientMessage {
         const clientMessage = ClientMessage.createForEncode();
@@ -49,12 +46,10 @@ export class MapProjectWithPredicateCodec {
         return clientMessage;
     }
 
-    static decodeResponse(clientMessage: ClientMessage): MapProjectWithPredicateResponseParams {
+    static decodeResponse(clientMessage: ClientMessage): Data[] {
         // empty initial frame
         clientMessage.nextFrame();
 
-        return {
-            response: ListMultiFrameCodec.decodeContainsNullable(clientMessage, DataCodec.decode),
-        };
+        return ListMultiFrameCodec.decodeContainsNullable(clientMessage, DataCodec.decode);
     }
 }

@@ -13,8 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
-export class StackTraceElement {
+import {ServerErrorStackElement} from '../core';
+
+/** @internal */
+export class StackTraceElement implements ServerErrorStackElement {
+
     className: string;
     methodName: string;
     fileName: string;

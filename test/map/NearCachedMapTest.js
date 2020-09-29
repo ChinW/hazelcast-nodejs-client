@@ -13,45 +13,48 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+'use strict';
 
-var expect = require("chai").expect;
-var HazelcastClient = require("../../.").Client;
-var Controller = require('./../RC');
-var Util = require('./../Util');
-var Config = require('../../.').Config;
-var fs = require('fs');
-var _fillMap = require('../Util').fillMap;
+const expect = require('chai').expect;
+const fs = require('fs');
+const RC = require('./../RC');
+const { Client } = require('../../.');
+const Util = require('./../Util');
+const fillMap = require('../Util').fillMap;
 
+describe('NearCachedMapTest', function () {
 
-describe("NearCachedMap", function () {
     [true, false].forEach(function (invalidateOnChange) {
         describe('invalidate on change=' + invalidateOnChange, function () {
-            var cluster;
-            var client1;
-            var client2;
-            var map1;
-            var map2;
+
+            let cluster, client1, client2;
+            let map1, map2;
 
             before(function () {
                 this.timeout(32000);
-                const cfg = new Config.ClientConfig();
-                return Controller.createCluster(null, fs.readFileSync(__dirname + '/hazelcast_nearcache_batchinvalidation_false.xml', 'utf8')).then(function (res) {
-                    cluster = res;
-                    return Controller.startMember(cluster.id);
-                }).then(function (member) {
-                    cfg.clusterName = cluster.id;
-                    var ncc = new Config.NearCacheConfig();
-                    ncc.name = 'nc-map';
-                    ncc.invalidateOnChange = invalidateOnChange;
-                    cfg.nearCacheConfigs['ncc-map'] = ncc;
-                    return HazelcastClient.newHazelcastClient(cfg).then(function (hazelcastClient) {
-                        client1 = hazelcastClient;
+                const cfg = {
+                    nearCaches: {
+                        'ncc-map': {
+                            invalidateOnChange
+                        }
+                    }
+                };
+                return RC.createCluster(null, fs.readFileSync(__dirname + '/hazelcast_nearcache_batchinvalidation_false.xml', 'utf8'))
+                    .then(function (res) {
+                        cluster = res;
+                        return RC.startMember(cluster.id);
+                    })
+                    .then(function (member) {
+                        cfg.clusterName = cluster.id;
+                        return Client.newHazelcastClient(cfg).then(function (hazelcastClient) {
+                            client1 = hazelcastClient;
+                        });
+                    })
+                    .then(function () {
+                        return Client.newHazelcastClient(cfg).then(function (hazelcastClient) {
+                            client2 = hazelcastClient;
+                        });
                     });
-                }).then(function () {
-                    return HazelcastClient.newHazelcastClient(cfg).then(function (hazelcastClient) {
-                        client2 = hazelcastClient;
-                    });
-                });
             });
 
             beforeEach(function () {
@@ -61,7 +64,7 @@ describe("NearCachedMap", function () {
                     return client2.getMap('ncc-map');
                 }).then(function (mp) {
                     map2 = mp;
-                    return _fillMap(map1);
+                    return fillMap(map1);
                 });
             });
 
@@ -70,9 +73,9 @@ describe("NearCachedMap", function () {
             });
 
             after(function () {
-                client1.shutdown();
-                client2.shutdown();
-                return Controller.terminateCluster(cluster.id);
+                return client1.shutdown()
+                    .then(() => client2.shutdown())
+                    .then(() => RC.terminateCluster(cluster.id));
             });
 
             function getNearCacheStats(map) {
@@ -80,7 +83,7 @@ describe("NearCachedMap", function () {
             }
 
             function expectStats(map, hit, miss, entryCount) {
-                var stats = getNearCacheStats(map);
+                const stats = getNearCacheStats(map);
                 expect(stats.hitCount).to.equal(hit);
                 expect(stats.missCount).to.equal(miss);
                 return expect(stats.entryCount).to.equal(entryCount);
@@ -90,7 +93,7 @@ describe("NearCachedMap", function () {
                 return map1.get('key0').then(function () {
                     return map1.get('key0');
                 }).then(function (val) {
-                    var stats = getNearCacheStats(map1);
+                    const stats = getNearCacheStats(map1);
                     expect(val).to.equal('val0');
                     expect(stats.missCount).to.equal(1);
                     expect(stats.entryCount).to.equal(1);
@@ -104,7 +107,7 @@ describe("NearCachedMap", function () {
                 }).then(function () {
                     return map1.get('key1');
                 }).then(function (val) {
-                    var stats = getNearCacheStats(map1);
+                    const stats = getNearCacheStats(map1);
                     expect(val).to.be.null;
                     expect(stats.hitCount).to.equal(0);
                     expect(stats.missCount).to.equal(2);
@@ -118,7 +121,7 @@ describe("NearCachedMap", function () {
                 }).then(function () {
                     return map1.get('key1');
                 }).then(function (val) {
-                    var stats = getNearCacheStats(map1);
+                    const stats = getNearCacheStats(map1);
                     expect(val).to.be.equal('something else');
                     expect(stats.hitCount).to.equal(0);
                     expect(stats.missCount).to.equal(2);
@@ -233,14 +236,21 @@ describe("NearCachedMap", function () {
 
             it('loadAll invalidates the cache');
 
-            it('putAll invalidates entries', function () {
-                return map1.getAll(['key1', 'key2']).then(function () {
-                    return map1.putAll([
-                        ['key1', 'newVal1'],
-                        ['key2', 'newVal2']
-                    ]);
-                }).then(function () {
-                    return expectStats(map1, 0, 2, 0);
+            [true, false].forEach(function (shouldUsePutAll) {
+                it((shouldUsePutAll ? 'putAll' : 'setAll') + ' invalidates entries', function () {
+                    return map1.getAll(['key1', 'key2'])
+                        .then(() => {
+                            const entries = [
+                                ['key1', 'newVal1'],
+                                ['key2', 'newVal2']
+                            ];
+                            if (shouldUsePutAll) {
+                                return map1.putAll(entries);
+                            } else {
+                                return map1.setAll(entries);
+                            }
+                        })
+                        .then(() => expectStats(map1, 0, 2, 0));
                 });
             });
 

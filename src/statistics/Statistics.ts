@@ -13,13 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/** @ignore *//** */
 
-import HazelcastClient from '../HazelcastClient';
+import {HazelcastClient} from '../HazelcastClient';
 import {ClientConnection} from '../network/ClientConnection';
 import {Properties} from '../config/Properties';
 import {ClientStatisticsCodec} from '../codec/ClientStatisticsCodec';
-import * as Util from '../Util';
-import {Task} from '../Util';
+import {
+    scheduleWithRepetition,
+    cancelRepetitionTask,
+    Task
+} from '../util/Util';
 import * as os from 'os';
 import {BuildInfo} from '../BuildInfo';
 import {ILogger} from '../logging/ILogger';
@@ -29,6 +33,7 @@ import * as Long from 'long';
  * This class is the main entry point for collecting and sending the client
  * statistics to the cluster. If the client statistics feature is enabled,
  * it will be scheduled for periodic statistics collection and sent.
+ * @internal
  */
 export class Statistics {
 
@@ -81,7 +86,7 @@ export class Statistics {
 
     stop(): void {
         if (this.task != null) {
-            Util.cancelRepetitionTask(this.task);
+            cancelRepetitionTask(this.task);
         }
     }
 
@@ -89,7 +94,7 @@ export class Statistics {
      * @param periodSeconds the interval at which the statistics collection and send is being run
      */
     schedulePeriodicStatisticsSendTask(periodSeconds: number): Task {
-        return Util.scheduleWithRepetition(() => {
+        return scheduleWithRepetition(() => {
             const collectionTimestamp = Long.fromNumber(Date.now());
 
             const connection = this.client.getConnectionManager().getRandomConnection();
@@ -124,12 +129,8 @@ export class Statistics {
         this.registerGauge('os.maxFileDescriptorCount', () => Statistics.EMPTY_STAT_VALUE);
         this.registerGauge('os.openFileDescriptorCount', () => Statistics.EMPTY_STAT_VALUE);
         this.registerGauge('os.processCpuTime', () => {
-            // Nodejs 4 does not support this metric. So we do not print an ugly warning for that.
-            if (Util.getNodejsMajorVersion() >= 6) {
-                return process.cpuUsage().user * 1000; // process.cpuUsage returns micoseconds. We convert to nanoseconds.
-            } else {
-                return Statistics.EMPTY_STAT_VALUE;
-            }
+            // process.cpuUsage returns micoseconds. We convert to nanoseconds
+            return process.cpuUsage().user * 1000;
         });
         this.registerGauge('os.systemLoadAverage', () => os.loadavg()[0]);
         this.registerGauge('os.totalPhysicalMemorySize', () => os.totalmem());
@@ -149,7 +150,8 @@ export class Statistics {
             gaugeFunc();
             this.allGauges[gaugeName] = gaugeFunc;
         } catch (e) {
-            this.logger.warn('Statistics', 'Could not collect data for gauge ' + gaugeName + ' , it won\'t be registered', e);
+            this.logger.warn('Statistics', 'Could not collect data for gauge ' + gaugeName
+                + ' , it won\'t be registered', e);
             this.allGauges[gaugeName] = (): string => Statistics.EMPTY_STAT_VALUE;
         }
     }

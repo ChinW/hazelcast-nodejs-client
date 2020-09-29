@@ -17,31 +17,35 @@
 import * as Long from 'long';
 import {DataInput, DataOutput} from '../serialization/Data';
 import {IdentifiedDataSerializable} from '../serialization/Serializable';
-import {AggregatorFactory} from './AggregatorFactory';
+import * as AggregatorFactory from './AggregatorFactory';
 
-export interface Aggregator<R> {
-
+/**
+ * Base interface for all aggregators.
+ */
+export interface Aggregator<R> extends IdentifiedDataSerializable {
 }
 
-export abstract class AbstractAggregator<R> implements IdentifiedDataSerializable, Aggregator<R> {
+/** @internal */
+export abstract class AbstractAggregator<R> implements Aggregator<R> {
+
+    abstract classId: number;
+    factoryId = AggregatorFactory.AGGREGATOR_FACTORY_ID;
     protected attributePath: string;
 
     constructor(attributePath?: string) {
         this.attributePath = attributePath;
     }
 
-    getFactoryId(): number {
-        return AggregatorFactory.FACTORY_ID;
-    }
-
-    abstract getClassId(): number;
-
     abstract readData(input: DataInput): any;
 
     abstract writeData(output: DataOutput): void;
 }
 
+/** @internal */
 export class CountAggregator extends AbstractAggregator<Long> {
+
+    classId = AggregatorFactory.COUNT;
+
     readData(input: DataInput): any {
         this.attributePath = input.readUTF();
         // member side field, not used in client
@@ -53,16 +57,12 @@ export class CountAggregator extends AbstractAggregator<Long> {
         // member side field, not used in client
         output.writeLong(Long.ZERO);
     }
-
-    getClassId(): number {
-        return AggregatorFactory.COUNT;
-    }
 }
 
+/** @internal */
 export class DoubleAverageAggregator extends AbstractAggregator<number> {
-    getClassId(): number {
-        return AggregatorFactory.DOUBLE_AVG;
-    }
+
+    classId = AggregatorFactory.DOUBLE_AVG;
 
     readData(input: DataInput): any {
         this.attributePath = input.readUTF();
@@ -77,10 +77,10 @@ export class DoubleAverageAggregator extends AbstractAggregator<number> {
     }
 }
 
+/** @internal */
 export class DoubleSumAggregator extends AbstractAggregator<number> {
-    getClassId(): number {
-        return AggregatorFactory.DOUBLE_SUM;
-    }
+
+    classId = AggregatorFactory.DOUBLE_SUM;
 
     readData(input: DataInput): any {
         this.attributePath = input.readUTF();
@@ -93,10 +93,10 @@ export class DoubleSumAggregator extends AbstractAggregator<number> {
     }
 }
 
+/** @internal */
 export class NumberAverageAggregator extends AbstractAggregator<number> {
-    getClassId(): number {
-        return AggregatorFactory.NUMBER_AVG;
-    }
+
+    classId = AggregatorFactory.NUMBER_AVG;
 
     readData(input: DataInput): any {
         this.attributePath = input.readUTF();
@@ -111,10 +111,10 @@ export class NumberAverageAggregator extends AbstractAggregator<number> {
     }
 }
 
+/** @internal */
 export class FixedPointSumAggregator extends AbstractAggregator<Long> {
-    getClassId(): number {
-        return AggregatorFactory.FIXED_SUM;
-    }
+
+    classId = AggregatorFactory.FIXED_SUM;
 
     readData(input: DataInput): any {
         this.attributePath = input.readUTF();
@@ -127,10 +127,10 @@ export class FixedPointSumAggregator extends AbstractAggregator<Long> {
     }
 }
 
+/** @internal */
 export class FloatingPointSumAggregator extends AbstractAggregator<number> {
-    getClassId(): number {
-        return AggregatorFactory.FLOATING_POINT_SUM;
-    }
+
+    classId = AggregatorFactory.FLOATING_POINT_SUM;
 
     readData(input: DataInput): any {
         this.attributePath = input.readUTF();
@@ -143,10 +143,10 @@ export class FloatingPointSumAggregator extends AbstractAggregator<number> {
     }
 }
 
+/** @internal */
 export class MaxAggregator<R> extends AbstractAggregator<R> {
-    getClassId(): number {
-        return AggregatorFactory.MAX;
-    }
+
+    classId = AggregatorFactory.MAX;
 
     readData(input: DataInput): any {
         this.attributePath = input.readUTF();
@@ -159,10 +159,10 @@ export class MaxAggregator<R> extends AbstractAggregator<R> {
     }
 }
 
+/** @internal */
 export class MinAggregator<R> extends AbstractAggregator<R> {
-    getClassId(): number {
-        return AggregatorFactory.MIN;
-    }
+
+    classId = AggregatorFactory.MIN;
 
     readData(input: DataInput): any {
         this.attributePath = input.readUTF();
@@ -175,10 +175,10 @@ export class MinAggregator<R> extends AbstractAggregator<R> {
     }
 }
 
+/** @internal */
 export class IntegerAverageAggregator extends AbstractAggregator<number> {
-    getClassId(): number {
-        return AggregatorFactory.INT_AVG;
-    }
+
+    classId = AggregatorFactory.INT_AVG;
 
     readData(input: DataInput): any {
         this.attributePath = input.readUTF();
@@ -193,10 +193,10 @@ export class IntegerAverageAggregator extends AbstractAggregator<number> {
     }
 }
 
+/** @internal */
 export class IntegerSumAggregator extends AbstractAggregator<Long> {
-    getClassId(): number {
-        return AggregatorFactory.INT_SUM;
-    }
+
+    classId = AggregatorFactory.INT_SUM;
 
     readData(input: DataInput): any {
         this.attributePath = input.readUTF();
@@ -209,10 +209,10 @@ export class IntegerSumAggregator extends AbstractAggregator<Long> {
     }
 }
 
+/** @internal */
 export class LongAverageAggregator extends AbstractAggregator<number> {
-    getClassId(): number {
-        return AggregatorFactory.LONG_AVG;
-    }
+
+    classId = AggregatorFactory.LONG_AVG;
 
     readData(input: DataInput): any {
         this.attributePath = input.readUTF();
@@ -227,10 +227,10 @@ export class LongAverageAggregator extends AbstractAggregator<number> {
     }
 }
 
+/** @internal */
 export class LongSumAggregator extends AbstractAggregator<Long> {
-    getClassId(): number {
-        return AggregatorFactory.LONG_SUM;
-    }
+
+    classId = AggregatorFactory.LONG_SUM;
 
     readData(input: DataInput): any {
         this.attributePath = input.readUTF();

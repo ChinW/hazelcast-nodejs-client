@@ -13,44 +13,44 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+'use strict';
 
-var Controller = require('./RC');
-var expect = require('chai').expect;
-var HazelcastClient = require('../.').Client;
-var Config = require('../.').Config;
+const RC = require('./RC');
+const expect = require('chai').expect;
+const { Client } = require('../.');
 
-describe('ClusterService', function () {
+describe('ClusterServiceTest', function () {
+
     this.timeout(25000);
-    var cluster;
-    var member1;
-    var client;
+    let cluster, member1, client;
 
     beforeEach(function () {
-        return Controller.createCluster(null, null).then(function (res) {
+        return RC.createCluster(null, null).then(function (res) {
             cluster = res;
-            return Controller.startMember(cluster.id);
+            return RC.startMember(cluster.id);
         }).then(function (res) {
             member1 = res;
-            var cfg = new Config.ClientConfig();
-            cfg.clusterName = cluster.id;
-            cfg.properties['hazelcast.client.heartbeat.interval'] = 1000;
-            cfg.properties['hazelcast.client.heartbeat.timeout'] = 5000;
-            return HazelcastClient.newHazelcastClient(cfg);
+            return Client.newHazelcastClient({
+                clusterName: cluster.id,
+                properties: {
+                    'hazelcast.client.heartbeat.interval': 1000,
+                    'hazelcast.client.heartbeat.timeout': 5000
+                }
+            });
         }).then(function (res) {
             client = res;
         });
     });
 
     afterEach(function () {
-        client.shutdown();
-        return Controller.terminateCluster(cluster.id);
+        return client.shutdown()
+            .then(() => RC.terminateCluster(cluster.id));
     });
 
     it('should know when a new member joins to cluster', function (done) {
-        var member2;
-
-        var membershipListener = {
-            memberAdded: function (membershipEvent) {
+        const membershipListener = {
+            memberAdded: (event) => {
+                expect(event.members.length).to.be.eq(2);
                 expect(client.clusterService.getSize()).to.be.eq(2);
                 done();
             }
@@ -58,16 +58,14 @@ describe('ClusterService', function () {
 
         client.clusterService.addMembershipListener(membershipListener);
 
-        Controller.startMember(cluster.id).then(function (res) {
-            member2 = res;
-        });
+        RC.startMember(cluster.id).catch(done);
     });
 
     it('should know when a member leaves cluster', function (done) {
-        var member2;
+        let member2;
 
-        var membershipListener = {
-            memberRemoved: function (membershipEvent) {
+        const membershipListener = {
+            memberRemoved: () => {
                 expect(client.getClusterService().getSize()).to.be.eq(1);
                 done();
             }
@@ -75,21 +73,20 @@ describe('ClusterService', function () {
 
         client.clusterService.addMembershipListener(membershipListener);
 
-        Controller.startMember(cluster.id).then(function (res) {
+        RC.startMember(cluster.id).then(function (res) {
             member2 = res;
-            Controller.shutdownMember(cluster.id, member2.uuid);
-        });
+            RC.shutdownMember(cluster.id, member2.uuid);
+        }).catch(done);
     });
 
     it('getMemberList returns correct list after a member is removed', function (done) {
-        var member2;
-        var member3;
+        let member2, member3;
 
-        var membershipListener = {
-            memberRemoved: function (membershipEvent) {
-                var remainingMemberList = client.getClusterService().getMemberList();
+        const membershipListener = {
+            memberRemoved: () => {
+                const remainingMemberList = client.getClusterService().getMemberList();
                 expect(remainingMemberList).to.have.length(2);
-                var portList = remainingMemberList.map(function (member) {
+                const portList = remainingMemberList.map(function (member) {
                     return member.address.port;
                 });
                 expect(portList).to.have.members([member1.port, member3.port]);
@@ -99,26 +96,31 @@ describe('ClusterService', function () {
 
         client.clusterService.addMembershipListener(membershipListener);
 
-        Controller.startMember(cluster.id).then(function (res) {
+        RC.startMember(cluster.id).then(function (res) {
             member2 = res;
-            return Controller.startMember(cluster.id);
+            return RC.startMember(cluster.id);
         }).then(function (res) {
             member3 = res;
-            Controller.shutdownMember(cluster.id, member2.uuid);
-        });
+            RC.shutdownMember(cluster.id, member2.uuid);
+        }).catch(done);
     });
 
     it('should throw when wrong host addresses given in config', function (done) {
-        var cfg = new Config.ClientConfig();
-        cfg.clusterName = cluster.id;
-        cfg.connectionStrategyConfig.connectionRetryConfig.clusterConnectTimeoutMillis = 2000;
-        cfg.networkConfig.addresses = [
-            '0.0.0.0:5709',
-            '0.0.0.1:5710'
-        ];
-
-        var falseStart = false;
-        HazelcastClient.newHazelcastClient(cfg).catch(function (err) {
+        let falseStart = false;
+        Client.newHazelcastClient({
+            clusterName: cluster.id,
+            network: {
+                clusterMembers: [
+                    '0.0.0.0:5709',
+                    '0.0.0.1:5710'
+                ]
+            },
+            connectionStrategy: {
+                connectionRetry: {
+                    clusterConnectTimeoutMillis: 2000
+                }
+            }
+        }).catch(function () {
             done();
         }).then(function (client) {
             if (client) {
@@ -127,22 +129,36 @@ describe('ClusterService', function () {
             }
         }).then(function () {
             if (falseStart) {
-                done(Error('Client falsely started with wrong addresses'));
+                done(new Error('Client falsely started with wrong addresses'));
             }
         });
     });
 
     it('should throw with wrong cluster name', function (done) {
-        var cfg = new Config.ClientConfig();
-        cfg.clusterName = 'wrong';
-        cfg.connectionStrategyConfig.connectionRetryConfig.clusterConnectTimeoutMillis = 2000;
-
-        HazelcastClient.newHazelcastClient(cfg).then(function (newClient) {
-            newClient.shutdown();
-            done(new Error('Client falsely started with wrong cluster name'));
-        }).catch(function (err) {
+        Client.newHazelcastClient({
+            clusterName: 'wrong',
+            connectionStrategy: {
+                connectionRetry: {
+                    clusterConnectTimeoutMillis: 2000
+                }
+            }
+        }).then(function (newClient) {
+            return newClient.shutdown()
+                .then(() => done(new Error('Client falsely started with wrong cluster name')));
+        }).catch(function () {
             done();
         });
     });
-})
-;
+
+    it('should not run when listener was removed', function (done) {
+        const membershipListener = {
+            memberAdded: () => {
+                done(new Error('Listener falsely fired'));
+            }
+        };
+        const id = client.clusterService.addMembershipListener(membershipListener);
+        client.clusterService.removeMembershipListener(id);
+
+        setTimeout(done, 3000);
+    });
+});
